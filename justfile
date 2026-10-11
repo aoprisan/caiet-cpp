@@ -7,13 +7,13 @@ default:
 install:
     npm ci
 
-# Compile src/*.ts to dist/
+# Compile src/*.ts to dist/ and sw/sw.ts to sw.js
 build:
-    npx tsc -p .
+    npm run build
 
 # Recompile on every save
 watch:
-    npx tsc -p . --watch
+    npm run watch
 
 # Build, then serve locally at http://localhost:8000
 serve port="8000": build

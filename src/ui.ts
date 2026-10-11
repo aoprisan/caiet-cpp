@@ -163,3 +163,5 @@ $('run').addEventListener('click', run);
 
 ex.value = store.get('caiet.code') ? 'mine' : '0';
 load(ex.value); run();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode unavailable */ });

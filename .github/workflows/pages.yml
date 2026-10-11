@@ -23,7 +23,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Assemble site
-        run: mkdir _site && cp -r index.html css dist _site/
+        run: mkdir _site && cp -r index.html manifest.webmanifest sw.js css dist icons _site/
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:
