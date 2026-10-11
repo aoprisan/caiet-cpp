@@ -18,7 +18,7 @@ Run `npm test` after any change to `src/interp.ts` or `src/explain.ts`, and add 
 - `css/style.css` — all styles; colours are tokens on `:root` with a dark set under `prefers-color-scheme` and `[data-theme]`
 - `src/interp.ts` — `compile(src).run(input)`, `CppError`, trace types; no DOM access
 - `src/explain.ts` — `explain(line)` returns Romanian sentences for one source line; no DOM access
-- `src/ui.ts` — editor, highlighting overlay, run button, stepper/stack, examples, localStorage draft
+- `src/ui.ts` — editor, highlighting overlay, run button, stepper/stack, examples, localStorage draft, phone view (tabs, key row, viewport fit)
 - `tests/run.ts` — tests for the two DOM-free modules
 - `sw/sw.ts` — service worker, compiled as a classic script (no imports/exports) with the WebWorker lib by `sw/tsconfig.json`, emitted to the repo root so its scope is the whole site. Its `SHELL` list must name every file the page needs offline; bump `CACHE` if you remove files from it
 - `manifest.webmanifest`, `icons/` — PWA manifest and icons (PNG rendered from `icons/icon.svg`)
@@ -47,4 +47,5 @@ Imports use `.js` extensions (`NodeNext` resolution) so the emitted files run un
 - All user-facing text is Romanian, with proper diacritics (ș, ț with comma below) and „ghilimele” quotes. Wording targets a 13-year-old: short sentences, no jargon.
 - The highlight overlay depends on the textarea and `#hl` sharing font, 16px/24px line metrics and 12px padding. Change them together (also the `24` and `12` constants in `src/ui.ts`).
 - The page must work at phone width and in both light and dark themes.
+- Phone view (`@media (max-width:760px), (pointer:coarse) and (max-height:500px)` in CSS, `MOBILE` in `src/ui.ts`; keep them identical): `.wrap` becomes a fixed full-screen app sized from `visualViewport` (`--app-h`/`--app-top`), `[data-pane]` sections show one at a time (`.on`) via the bottom `#tabs`, and `#keys` (C++ keys and snippets) appears while the editor is focused. `body.editing` = editor focused, `body.kb` = keyboard open (tabs and explanation hidden). `.tabs`, `.keys`, `.mob` are hidden on desktop. Textareas must stay at 16px or iOS zooms on focus.
 - All URLs stay relative (the site is served from `/caiet-cpp/` on GitHub Pages).
