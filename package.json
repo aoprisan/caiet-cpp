@@ -1,0 +1,17 @@
+{
+  "name": "caiet-cpp",
+  "private": true,
+  "description": "Browser playground for a small C++ subset, for Romanian 7th graders.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "typecheck": "tsc -p . --noEmit && tsc -p tests --noEmit",
+    "test": "tsc -p tests && node build-test/tests/run.js",
+    "serve": "npm run build && python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2"
+  }
+}
