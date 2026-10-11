@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "WebWorker"],
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "isolatedModules": false,
+    "verbatimModuleSyntax": false,
+    "sourceMap": false,
+    "rootDir": ".",
+    "outDir": ".."
+  },
+  "include": ["sw.ts"],
+  "exclude": []
+}
