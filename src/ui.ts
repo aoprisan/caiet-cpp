@@ -23,6 +23,7 @@ const store = {
 ex.add(new Option('Programul meu', 'mine'));
 EX.forEach((e, i) => ex.add(new Option('Exemplu: ' + e.name, String(i))));
 
+const keys = $('keys'), follow = $('follow'), sCode = $('sCode');
 const hl = $('hl'), band = $('band'), layer = $('layer'), range = $<HTMLInputElement>('sRange'), sLabel = $('sLabel'), stackEl = $('stack');
 let badLine = 0, curLine = 0, lines = 0, steps: Snapshot[] = [], cur = 0, fullOut = '', lastErr: CppError | null = null, cut = false;
 
@@ -54,6 +55,7 @@ function drawGutter() {
   const n = code.value.split('\n').length;
   if (n !== lines) { lines = n; let h = ''; for (let i = 1; i <= n; i++) h += '<div>' + i + '</div>'; gutter.innerHTML = h }
   [...gutter.children].forEach((d, i) => { d.classList.toggle('bad', i + 1 === badLine); d.classList.toggle('cur', i + 1 === curLine) });
+  tabBtn('cod')?.classList.toggle('bad', !!badLine);
   hl.innerHTML = paint(code.value) + '\n';
   band.hidden = !curLine; band.style.top = (12 + (curLine - 1) * 24) + 'px';
   sync(); drawExplain();
@@ -65,6 +67,8 @@ function drawExplain() {
 }
 code.addEventListener('keyup', drawExplain);
 code.addEventListener('click', drawExplain);
+// Phones move the caret by long-press and drag, which fires neither keyup nor click.
+document.addEventListener('selectionchange', () => { if (document.activeElement === code && !curLine) drawExplain() });
 
 /** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step). */
 type Cell = [name: string, value: number | undefined, global: boolean, idx: number];
@@ -104,6 +108,9 @@ function showStep(i: number) {
     const g = all.filter(v => v[2]);
     if (g.length) stackEl.append(frame('variabile globale', g, prev, cur > 0));
   }
+  sCode.hidden = !curLine;
+  sCode.innerHTML = curLine ? '<span class="ln">' + curLine + '</span>' + paint(code.value.split('\n')[curLine - 1].trim()) : '';
+  follow.hidden = n < 2;
   if (curLine) reveal(curLine);
   drawGutter();
 }
@@ -127,6 +134,8 @@ function run() {
     status.innerHTML = '';
     status.append((err.kind === 'run' ? 'Eroare la rulare, linia ' : 'Greșeală în program, linia ') + err.line);
     const s = document.createElement('small'); s.textContent = err.message; status.append(s);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'goto'; b.textContent = 'Arată linia ' + err.line;
+    const line = err.line; b.addEventListener('click', () => goLine(line)); status.append(b);
     badLine = err.line; reveal(err.line);
   } else { status.textContent = 'Program terminat cu succes.'; badLine = 0 }
   showStep(steps.length - 1);
@@ -137,6 +146,14 @@ $('sNext').addEventListener('click', () => showStep(cur + 1));
 $('sLast').addEventListener('click', () => showStep(steps.length - 1));
 range.addEventListener('input', () => showStep(+range.value));
 
+/** Puts the caret at the start of a line and scrolls it into view (from the error message). */
+function goLine(line: number) {
+  tab('cod');
+  const at = code.value.split('\n').slice(0, line - 1).reduce((n, l) => n + l.length + 1, 0);
+  if (!MOBILE.matches) code.focus(); // on a phone focusing would pop up the keyboard over the line
+  code.setSelectionRange(at, at); reveal(line); sync(); drawExplain();
+}
+
 function insert(text: string) {
   code.focus();
   let ok = false;
@@ -144,8 +161,22 @@ function insert(text: string) {
   try { ok = document.execCommand('insertText', false, text) } catch { /* unsupported */ }
   if (!ok) { code.setRangeText(text, code.selectionStart, code.selectionEnd, 'end'); code.dispatchEvent(new Event('input')) }
 }
+/** Inserts a snippet: each \n keeps the current line's indent, | marks where the caret ends up. */
+function snippet(s: string) {
+  const before = code.value.slice(0, code.selectionStart), ind = /^[ \t]*/.exec(before.slice(before.lastIndexOf('\n') + 1))![0];
+  const t = s.replace(/\n/g, '\n' + ind), k = t.indexOf('|'), text = t.replace('|', '');
+  insert(text);
+  if (k >= 0) { const p = code.selectionStart - (text.length - k); code.setSelectionRange(p, p) }
+}
+/** Types }, first taking one indent level off a line that is still blank. */
+function closeBrace() {
+  const at = code.selectionStart, before = code.value.slice(0, at), ln = before.slice(before.lastIndexOf('\n') + 1);
+  if (at === code.selectionEnd && /^[ \t]*    $/.test(ln)) code.setSelectionRange(at - 4, at);
+  insert('}');
+}
 code.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); return }
+  if (e.key === '}' && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); closeBrace(); return }
   if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); insert('    '); return }
   if (e.key === 'Enter') {
     const before = code.value.slice(0, code.selectionStart), ln = before.slice(before.lastIndexOf('\n') + 1);
@@ -159,7 +190,66 @@ code.addEventListener('input', () => { badLine = 0; curLine = 0; drawGutter(); s
 inp.addEventListener('input', () => { if (ex.value === 'mine') saveMine() });
 code.addEventListener('scroll', sync);
 ex.addEventListener('change', () => { load(ex.value); run() });
-$('run').addEventListener('click', run);
+$('run').addEventListener('click', () => { run(); if (MOBILE.matches) tab('rulare') });
+
+// ---- Phone view: tabs, keyboard-aware height, key row. Keep MOBILE in sync with the media query in css/style.css.
+const MOBILE = matchMedia('(max-width:760px), (pointer:coarse) and (max-height:500px)');
+const panes = [...document.querySelectorAll<HTMLElement>('[data-pane]')], tabs = [...document.querySelectorAll<HTMLButtonElement>('#tabs button')];
+function tabBtn(name: string) { return tabs.find(b => b.dataset.tab === name) }
+function tab(name: string) {
+  panes.forEach(p => p.classList.toggle('on', p.dataset.pane === name));
+  tabs.forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === name)));
+  // A pane that was hidden lost its scroll position; bring the interesting line back.
+  if (name === 'cod' && (curLine || badLine)) { reveal(curLine || badLine); sync() }
+}
+tabs.forEach(b => b.addEventListener('click', () => tab(b.dataset.tab!)));
+follow.addEventListener('click', () => { tab('pasi'); showStep(0) });
+
+// The page is sized to the visible part of the screen, so the editor ends right above the keyboard.
+const vv = window.visualViewport, root = document.documentElement.style;
+let tallest = 0, wide = 0;
+function fit() {
+  const focused = document.activeElement === code;
+  document.body.classList.toggle('editing', focused);
+  if (!vv) return;
+  if (Math.abs(vv.scale - 1) > 0.01) { root.removeProperty('--app-h'); root.removeProperty('--app-top'); return } // pinch-zoomed
+  if (vv.width !== wide) { wide = vv.width; tallest = 0 } // rotated: measure again
+  tallest = Math.max(tallest, vv.height);
+  root.setProperty('--app-h', vv.height + 'px'); root.setProperty('--app-top', vv.offsetTop + 'px');
+  document.body.classList.toggle('kb', focused && vv.height < tallest - 120);
+}
+vv?.addEventListener('resize', fit);
+vv?.addEventListener('scroll', fit);
+code.addEventListener('focus', fit);
+code.addEventListener('blur', fit);
+
+/** Keys that are hard to reach on a phone keyboard. t is typed as a snippet; a is an action. */
+const KEYS: { l: string; t?: string; a?: () => void; c?: string; title?: string }[] = [
+  { l: '←', c: 'a', title: 'Cursorul la stânga', a: () => { const p = Math.max(0, code.selectionStart - 1); code.setSelectionRange(p, p) } },
+  { l: '→', c: 'a', title: 'Cursorul la dreapta', a: () => { const p = code.selectionEnd + 1; code.setSelectionRange(p, p) } },
+  { l: '⇥', t: '    ', c: 'a', title: 'Mută linia mai la dreapta' },
+  { l: ';', t: ';' }, { l: '{', t: '{' }, { l: '}', a: closeBrace }, { l: '(', t: '(' }, { l: ')', t: ')' },
+  { l: '<<', t: ' << ' }, { l: '>>', t: ' >> ' }, { l: '"', t: '"|"' },
+  { l: '=', t: '=' }, { l: '==', t: ' == ' }, { l: '!=', t: ' != ' }, { l: '<', t: '<' }, { l: '>', t: '>' },
+  { l: '+', t: '+' }, { l: '-', t: '-' }, { l: '*', t: '*' }, { l: '/', t: '/' }, { l: '%', t: '%' },
+  { l: '&&', t: ' && ' }, { l: '||', t: ' || ' }, { l: '!', t: '!' },
+  { l: 'int', t: 'int |;', c: 'w' }, { l: 'cin', t: 'cin >> |;', c: 'w' }, { l: 'cout', t: 'cout << | << endl;', c: 'w' },
+  { l: 'endl', t: 'endl', c: 'w' }, { l: 'if', t: 'if (|) {\n    \n}', c: 'w' }, { l: 'else', t: ' else {\n    |\n}', c: 'w' },
+  { l: 'for', t: 'for (int i = 1; i <= |; i++) {\n    \n}', c: 'w' }, { l: 'while', t: 'while (|) {\n    \n}', c: 'w' },
+  { l: '↶', c: 'a', title: 'Anulează', a: () => { code.focus(); document.execCommand('undo') } },
+];
+for (const k of KEYS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.tabIndex = -1; b.textContent = k.l;
+  if (k.c) b.className = k.c;
+  if (k.title) { b.title = k.title; b.setAttribute('aria-label', k.title) }
+  // Keep the focus (and the keyboard) in the editor.
+  b.addEventListener('pointerdown', e => e.preventDefault());
+  b.addEventListener('mousedown', e => e.preventDefault());
+  b.addEventListener('click', () => { if (k.a) { code.focus(); k.a() } else snippet(k.t!); drawExplain() });
+  keys.append(b);
+}
+tab('cod'); fit();
 
 ex.value = store.get('caiet.code') ? 'mine' : '0';
 load(ex.value); run();

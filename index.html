@@ -2,7 +2,7 @@
 <html lang="ro">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Caiet C++</title>
 <meta name="description" content="Scrie programe C++ simple, rulează-le și urmărește-le pas cu pas.">
 <meta name="theme-color" content="#1d4fd8" media="(prefers-color-scheme: light)">
@@ -27,7 +27,7 @@
   </header>
 
   <div class="grid">
-    <div class="panel">
+    <div class="panel" data-pane="cod">
       <label class="label" for="code"><span>Programul</span><kbd>Ctrl + Enter = rulează</kbd></label>
       <div class="editor">
         <div class="gutter" id="gutter" aria-hidden="true"></div>
@@ -36,24 +36,28 @@
           <textarea id="code" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
         </div>
       </div>
+      <div class="keys" id="keys" role="toolbar" aria-label="Taste pentru cod"></div>
       <div class="explain" aria-live="polite">
         <div class="label" id="exT">Ce înseamnă linia</div>
         <ul id="exL"></ul>
       </div>
     </div>
     <div class="side">
-      <div class="panel">
-        <label class="label" for="inp">Date de intrare (ce citește cin)</label>
-        <textarea id="inp" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="de exemplu: 12 30"></textarea>
-      </div>
-      <div class="panel">
-        <div class="label">Ce afișează programul</div>
-        <div class="out">
-          <pre id="out" aria-live="polite"></pre>
-          <p id="status" hidden></p>
+      <div class="runbox" data-pane="rulare">
+        <div class="panel">
+          <label class="label" for="inp">Date de intrare (ce citește cin)</label>
+          <textarea id="inp" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="de exemplu: 12 30"></textarea>
+        </div>
+        <div class="panel">
+          <div class="label">Ce afișează programul</div>
+          <div class="out">
+            <pre id="out" aria-live="polite"></pre>
+            <p id="status" hidden></p>
+          </div>
+          <button type="button" class="mob follow" id="follow" hidden>Urmărește pas cu pas →</button>
         </div>
       </div>
-      <div class="panel">
+      <div class="panel" data-pane="pasi">
         <div class="label">Stiva: variabilele din memorie</div>
         <div class="stackbox">
           <div class="stepbar">
@@ -64,13 +68,14 @@
             <input type="range" id="sRange" min="0" max="0" value="0" aria-label="Pasul curent">
           </div>
           <p id="sLabel"></p>
+          <pre class="mob" id="sCode" hidden></pre>
           <div id="stack"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <section class="help">
+  <section class="help" data-pane="ajutor">
     <h2>Ce poți folosi</h2>
     <dl>
       <div><dt>Variabile</dt><dd>int a, b = 5;</dd></div>
@@ -82,6 +87,13 @@
     </dl>
     <p>Aici lucrăm doar cu numere întregi (int). Împărțirea <code>/</code> dă câtul, iar <code>%</code> dă restul. Numerele cu virgulă, caracterele, șirurile, vectorii și funcțiile proprii nu sunt disponibile.</p>
   </section>
+
+  <nav class="tabs" id="tabs" aria-label="Părțile caietului">
+    <button type="button" data-tab="cod"><span aria-hidden="true">{ }</span>Cod</button>
+    <button type="button" data-tab="rulare"><span aria-hidden="true">▶</span>Rulare</button>
+    <button type="button" data-tab="pasi"><span aria-hidden="true">⇥</span>Pași</button>
+    <button type="button" data-tab="ajutor"><span aria-hidden="true">?</span>Ajutor</button>
+  </nav>
 </div>
 <script type="module" src="dist/ui.js"></script>
 </body>

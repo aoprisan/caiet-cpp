@@ -42,7 +42,7 @@ select{background:var(--paper); border:1px solid var(--line); border-radius:6px;
 .run:hover{filter:brightness(1.08)}
 :focus-visible{outline:3px solid var(--accent); outline-offset:2px}
 .grid{display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:20px; align-items:start}
-.side{display:flex; flex-direction:column; gap:20px; min-width:0}
+.side,.runbox{display:flex; flex-direction:column; gap:20px; min-width:0}
 .panel{min-width:0; display:flex; flex-direction:column; gap:6px}
 .label{font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); display:flex; justify-content:space-between; gap:8px}
 .label kbd{font-family:var(--mono); font-weight:400; text-transform:none; letter-spacing:0}
@@ -56,8 +56,8 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .layer{position:absolute; top:0; left:0; padding:12px; pointer-events:none}
 #hl{margin:0; font:400 16px/24px var(--mono); white-space:pre; tab-size:4; color:var(--ink)}
 #band{position:absolute; left:0; width:20000px; height:24px; background:var(--cur-bg)}
-#hl .kw{color:var(--hl-kw)} #hl .str{color:var(--hl-str)} #hl .num{color:var(--hl-num)}
-#hl .com{color:var(--hl-com)} #hl .io{color:var(--hl-io)} #hl .pre{color:var(--hl-pre)}
+:is(#hl,#sCode) .kw{color:var(--hl-kw)} :is(#hl,#sCode) .str{color:var(--hl-str)} :is(#hl,#sCode) .num{color:var(--hl-num)}
+:is(#hl,#sCode) .com{color:var(--hl-com)} :is(#hl,#sCode) .io{color:var(--hl-io)} :is(#hl,#sCode) .pre{color:var(--hl-pre)}
 #code{position:relative; display:block; width:100%; height:100%; padding:12px; white-space:pre; overflow:auto; outline-offset:-3px; color:transparent; caret-color:var(--ink)}
 .explain{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-top:6px; min-height:5.5em}
 .explain ul{margin:6px 0 0; padding-left:1.2em; max-width:70ch}
@@ -91,4 +91,57 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .help dt{font-weight:700}
 .help dd{margin:0; font:400 .9rem/1.6 var(--mono); color:var(--muted); overflow-wrap:anywhere}
 .help p{margin:14px 0 0; color:var(--muted); max-width:65ch}
-@media (max-width:760px){ .grid{grid-template-columns:minmax(0,1fr)} h1{font-size:1.8rem} .editor{height:380px} }
+#status .goto{display:block; margin-top:8px; background:var(--paper); color:var(--err); border:1px solid currentColor; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer}
+/* Phone-only parts; the media query below (and MOBILE in src/ui.ts) turns them on. */
+.tabs,.keys,.mob{display:none}
+
+/* Phone view: a full-screen app. Compact header on top, one part of the notebook at a time,
+   tabs at the bottom. While the keyboard is open the tabs give way to a row of C++ keys.
+   .wrap is sized to the visible viewport (--app-h/--app-top, set from visualViewport in src/ui.ts)
+   so the editor ends right above the keyboard. Keep the query in sync with MOBILE in src/ui.ts. */
+@media (max-width:760px), (pointer:coarse) and (max-height:500px){
+  .wrap{position:fixed; left:0; right:0; top:var(--app-top,0px); height:var(--app-h,100dvh); max-width:none; overflow:hidden;
+    padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); gap:8px}
+  header{flex-wrap:nowrap; align-items:center; gap:10px}
+  h1{font-size:1.4rem; white-space:nowrap}
+  .sub,.label kbd{display:none}
+  .tools{flex:1; min-width:0; flex-wrap:nowrap; gap:8px; justify-content:flex-end}
+  select{flex:1; min-width:0; width:0; padding:8px; min-height:44px}
+  .run{padding:8px 14px; min-height:44px; white-space:nowrap}
+  .grid,.side{display:contents}
+  [data-pane]{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain}
+  [data-pane]:not(.on){display:none}
+  .panel[data-pane="cod"]{overflow:hidden}
+  .editor{height:auto; flex:1; min-height:96px}
+  .gutter{width:2.6em; padding-right:6px}
+  .explain{flex:none; margin-top:0; min-height:0; max-height:7.2em; overflow:auto; padding:8px 10px}
+  body.kb .explain, body.kb .tabs{display:none}
+  .runbox{gap:12px}
+  #inp{height:76px}
+  #out{max-height:none}
+  .out{min-height:140px}
+  .mob{display:block}
+  .mob[hidden]{display:none}
+  .follow{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:12px; font-weight:700; color:var(--accent); cursor:pointer}
+  .stepbar button{min-width:44px; min-height:44px}
+  #sCode{margin:0; padding:6px 10px; font:400 16px/24px var(--mono); white-space:pre; overflow-x:auto; background:var(--cur-bg); border-radius:4px; color:var(--ink)}
+  #sCode .ln{color:var(--muted); margin-right:10px}
+  .help{flex:1; margin-bottom:12px}
+
+  .tabs{display:flex; flex:none; margin:0 calc(-1 * max(12px,env(safe-area-inset-right))) 0 calc(-1 * max(12px,env(safe-area-inset-left)));
+    padding-bottom:env(safe-area-inset-bottom); background:var(--paper); border-top:1px solid var(--line)}
+  .tabs button{flex:1; display:flex; flex-direction:column; align-items:center; gap:1px; min-height:54px; padding:6px 2px 8px;
+    background:none; border:0; color:var(--muted); font-weight:700; font-size:.85rem; cursor:pointer; position:relative}
+  .tabs button span{font:600 1.05rem/1.2 var(--mono)}
+  .tabs button[aria-current="true"]{color:var(--accent); box-shadow:inset 0 3px 0 var(--accent)}
+  .tabs button.bad::after{content:""; position:absolute; top:8px; left:calc(50% + 14px); width:8px; height:8px; border-radius:50%; background:var(--err)}
+
+  body.editing .keys{display:flex}
+  .keys{flex:none; gap:6px; overflow-x:auto; padding:6px 0 max(6px,env(safe-area-inset-bottom)); scrollbar-width:none}
+  .keys::-webkit-scrollbar{display:none}
+  .keys button{flex:none; min-width:42px; height:42px; padding:0 10px; background:var(--paper); color:var(--ink);
+    border:1px solid var(--line); border-radius:6px; font:600 16px/1 var(--mono); cursor:pointer; touch-action:manipulation}
+  .keys button.w{color:var(--hl-kw)}
+  .keys button.a{color:var(--muted)}
+  .keys button:active{background:var(--cur-bg)}
+}
