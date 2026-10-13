@@ -1,6 +1,7 @@
-// Page wiring: editor, highlighting, run, step-through stack view, examples.
+// Page wiring: editor, highlighting, run, step-through stack view, examples, pbinfo problems.
 import { compile, CppError, type RunResult, type Snapshot } from './interp.js';
 import { explain } from './explain.js';
+import { CAPITOLE, DIFICULTATI, blocuri, matches, note, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const code = $<HTMLTextAreaElement>('code'), inp = $<HTMLTextAreaElement>('inp'), gutter = $('gutter'), outEl = $('out');
@@ -114,12 +115,20 @@ function showStep(i: number) {
   if (curLine) reveal(curLine);
   drawGutter();
 }
+/** The editor holds "mine" (the free draft), an example (its index) or a problem ("p" + id, its own draft). */
+const isProb = (v: string) => v[0] === 'p';
 function load(v: string) {
   if (v === 'mine') { code.value = store.get('caiet.code') || H + '    \n' + F; inp.value = store.get('caiet.inp') || '' }
+  else if (isProb(v)) { code.value = store.get('caiet.' + v) || H + '    \n' + F; inp.value = store.get('caiet.' + v + '.in') ?? probOf(v)?.ex[0].in ?? '' }
   else { code.value = EX[+v].code; inp.value = EX[+v].inp }
-  badLine = 0; drawGutter();
+  if (v === 'mine' || isProb(v)) store.set('caiet.doc', v);
+  badLine = 0; pRes.innerHTML = ''; drawGutter(); drawBar();
 }
-function saveMine() { ex.value = 'mine'; store.set('caiet.code', code.value); store.set('caiet.inp', inp.value) }
+function saveMine() {
+  if (isProb(ex.value)) { store.set('caiet.' + ex.value, code.value); store.set('caiet.' + ex.value + '.in', inp.value); return }
+  ex.value = 'mine'; store.set('caiet.doc', 'mine'); store.set('caiet.code', code.value); store.set('caiet.inp', inp.value);
+  drawBar();
+}
 
 function run() {
   let r: Pick<RunResult, 'out' | 'trace' | 'cut'> & { end?: Snapshot }, err: CppError | null = null;
@@ -187,7 +196,7 @@ code.addEventListener('keydown', e => {
 });
 inp.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run() } });
 code.addEventListener('input', () => { badLine = 0; curLine = 0; drawGutter(); saveMine() });
-inp.addEventListener('input', () => { if (ex.value === 'mine') saveMine() });
+inp.addEventListener('input', () => { if (ex.value === 'mine' || isProb(ex.value)) saveMine() });
 code.addEventListener('scroll', sync);
 ex.addEventListener('change', () => { load(ex.value); run() });
 $('run').addEventListener('click', () => { run(); if (MOBILE.matches) tab('rulare') });
@@ -251,7 +260,161 @@ for (const k of KEYS) {
 }
 tab('cod'); fit();
 
-ex.value = store.get('caiet.code') ? 'mine' : '0';
+// ---- Problems from pbinfo (probleme/probleme.json, built by tools/probleme.mjs): list, statement, check on the examples.
+let probs: Problema[] = [], sel: Problema | undefined;
+const notes = new Map<Problema, ReturnType<typeof note>>();
+const probsEl = $('probs'), pUl = $('pUl'), pView = $('pView'), pRes = $('pRes'), pCount = $('pCount');
+const pQ = $<HTMLInputElement>('pQ'), pSub = $<HTMLSelectElement>('pSub'), pDif = $<HTMLSelectElement>('pDif'), pOk = $<HTMLInputElement>('pOk');
+const solved = new Set((store.get('caiet.rezolvate') || '').split(',').filter(Boolean).map(Number));
+function probOf(v: string) { return probs.find(p => 'p' + p.id === v) }
+const noteOf = (p: Problema) => { let n = notes.get(p); if (!n) notes.set(p, n = note(p)); return n };
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+/** Statement text: paragraphs keep their line breaks, "- " lines become a list, [imagine: url] becomes the picture. */
+function prose(parent: HTMLElement, s: string) {
+  const fill = (e: HTMLElement, t: string) => t.split(/\[imagine: (https:\/\/[^\s\]]+)\]/).forEach((x, i) => {
+    if (i % 2 === 0) { if (x) e.append(x); return }
+    const img = el('img'), link = el('a', '', 'Vezi desenul');
+    link.href = x; link.target = '_blank'; link.rel = 'noopener';
+    img.src = x; img.alt = 'Desen din enunț'; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => img.replaceWith(link)); // offline, or the picture moved
+    e.append(img);
+  });
+  for (const b of blocuri(s)) {
+    if ('p' in b) { const p = el('p'); fill(p, b.p); parent.append(p) }
+    else { const ul = el('ul'); for (const t of b.li) { const li = el('li'); fill(li, t); ul.append(li) } parent.append(ul) }
+  }
+}
+function count(n: number) { return n === 0 ? 'Nicio problemă nu se potrivește.' : n === 1 ? 'O problemă' : n + (n % 100 >= 20 || n % 100 === 0 ? ' de probleme' : ' probleme') }
+function list() {
+  const hits = probs.filter(p => (!pSub.value || p.sub === +pSub.value) && (!pDif.value || p.dif === +pDif.value) && (!pOk.checked || !noteOf(p).stop) && matches(p, pQ.value));
+  pCount.textContent = count(hits.length);
+  pUl.innerHTML = '';
+  for (const p of hits) {
+    const li = el('li'), b = el('button'), name = el('b', '', p.nume);
+    b.type = 'button'; b.dataset.id = String(p.id); if (p === sel) b.className = 'on';
+    if (noteOf(p).stop) b.classList.add('stop');
+    const meta = el('small', '', DIFICULTATI[p.dif] + ' · ' + CAPITOLE[p.sub].toLowerCase());
+    const left = el('span'); left.append(name, meta);
+    b.append(left);
+    if (solved.has(p.id)) { const ok = el('span', 'ok', '✓'); ok.title = 'Rezolvată'; b.append(ok) }
+    b.addEventListener('click', () => show(p, true));
+    li.append(b); pUl.append(li);
+  }
+}
+/** Shows a problem's statement; `open` also brings it up on a phone (instead of the list). */
+function show(p: Problema, open: boolean) {
+  sel = p; store.set('caiet.psel', String(p.id));
+  pView.innerHTML = '';
+  const back = el('button', 'mob pback', '← Înapoi la listă'); back.type = 'button';
+  back.addEventListener('click', () => { probsEl.classList.remove('open'); pUl.querySelector<HTMLElement>('.on')?.focus() });
+  const h = el('h3', '', p.nume), meta = el('p', 'pmeta', CAPITOLE[p.sub] + ' · dificultate ' + DIFICULTATI[p.dif] + ' · ');
+  const a = el('a', '', 'problema #' + p.id + ' pe pbinfo.ro'); a.href = url(p); a.target = '_blank'; a.rel = 'noopener';
+  meta.append(a); pView.append(back, h, meta);
+  const n = noteOf(p);
+  for (const t of n.text) pView.append(el('p', n.stop && t === n.text[0] ? 'pwarn stop' : 'pwarn', t));
+  const go = el('button', 'run', ex.value === 'p' + p.id ? '✎ Continuă în caiet' : '✎ Rezolvă în caiet'); go.type = 'button';
+  go.addEventListener('click', () => start(p));
+  pView.append(go);
+  const part = (title: string, s: string) => { if (!s) return; pView.append(el('h4', '', title)); prose(pView, s) };
+  for (const [t, s] of p.sect || []) if (!t) prose(pView, s);
+  part('Cerința', p.cerinta); part('Date de intrare', p.intrare); part('Date de ieșire', p.iesire); part('Restricții și precizări', p.restrictii);
+  p.ex.forEach((e, i) => {
+    pView.append(el('h4', '', p.ex.length > 1 ? 'Exemplul ' + (i + 1) : 'Exemplu'));
+    const box = el('div', 'pex'), use = el('button', 'pbtn', 'Pune în „Date de intrare”');
+    for (const [t, v] of [['Intrare', e.in], ['Ieșire', e.out]]) { const d = el('div'); d.append(el('small', '', t), el('pre', '', v)); box.append(d) }
+    if (e.ex) { const d = el('div', 'pexp'); prose(d, e.ex); box.append(d) }
+    use.type = 'button';
+    use.addEventListener('click', () => { if (ex.value !== 'p' + p.id) start(p); inp.value = e.in; saveMine(); run(); if (MOBILE.matches) tab('rulare') });
+    box.append(use); pView.append(box);
+  });
+  for (const [t, s] of p.sect || []) if (t) part(t, s);
+  const who = [p.autor && 'Autor: ' + p.autor, p.sursa && 'Sursa: ' + p.sursa].filter(Boolean).join(' · ');
+  if (who) pView.append(el('p', 'pfoot', who));
+  pView.scrollTop = 0;
+  if (open) probsEl.classList.add('open');
+  pUl.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.id === String(p.id)));
+}
+/** Opens a problem in the editor (with its own saved draft) and goes to the editor. */
+function start(p: Problema) {
+  const v = 'p' + p.id;
+  probOption(v, p.nume); ex.value = v; load(v); run();
+  if (sel === p) show(p, probsEl.classList.contains('open'));
+  if (MOBILE.matches) tab('cod');
+  else { document.querySelector('.grid')!.scrollIntoView({ behavior: 'smooth' }); code.focus({ preventScroll: true }) }
+}
+/** The problem being solved gets its own entry in the menu, right after "Programul meu". */
+function probOption(v: string, name: string) {
+  [...ex.options].filter(o => isProb(o.value) && o.value !== v).forEach(o => o.remove());
+  if (![...ex.options].some(o => o.value === v)) ex.add(new Option('Problema: ' + name, v), 1);
+  store.set('caiet.docName', name);
+}
+function drawBar() {
+  const v = ex.value, on = isProb(v), p = probOf(v);
+  $('pBar').hidden = !on;
+  if (!on) return;
+  $('pName').textContent = p ? p.nume : (ex.selectedOptions[0]?.text || '').replace('Problema: ', '');
+  $<HTMLButtonElement>('pCheck').disabled = $<HTMLButtonElement>('pShow').disabled = !p;
+}
+function check() {
+  const p = probOf(ex.value);
+  if (!p) return;
+  pRes.innerHTML = '';
+  run(); // so the output and the stack match the program being checked
+  let rs: Rezultat[];
+  try { rs = verifica(code.value, p) } catch (e) {
+    if (!(e instanceof CppError)) throw e;
+    pRes.append(el('li', 'bad', 'Programul are o greșeală la linia ' + e.line + '. Repar-o, apoi verifică din nou.'));
+    return;
+  }
+  rs.forEach((r, i) => {
+    const name = rs.length > 1 ? 'Exemplul ' + (i + 1) : 'Exemplul', li = el('li', r.ok ? '' : 'bad', (r.ok ? '✔ ' : '✘ ') + name + (r.ok ? ': corect' : ''));
+    if (!r.ok) {
+      if (r.err) li.append(el('small', '', (r.err.kind === 'run' ? 'Eroare la rulare, linia ' : 'Linia ') + r.err.line + ': ' + r.err.message));
+      const cmp = el('div', 'cmp'), want = el('div'), got = el('div');
+      want.append(el('small', '', 'Trebuia să afișeze'), el('pre', '', r.want));
+      got.append(el('small', '', 'Programul a afișat'), el('pre', r.out.trim() ? '' : 'q', r.out.trim() ? r.out : '(nimic)'));
+      cmp.append(want, got); li.append(cmp);
+      const b = el('button', 'pbtn', 'Rulează-l pas cu pas'); b.type = 'button';
+      b.addEventListener('click', () => { inp.value = p.ex[i].in; saveMine(); run(); tab(MOBILE.matches ? 'pasi' : 'cod'); showStep(0) });
+      li.append(b);
+    }
+    pRes.append(li);
+  });
+  if (rs.every(r => r.ok)) {
+    solved.add(p.id); store.set('caiet.rezolvate', [...solved].join(','));
+    const li = el('li', 'win', 'Bravo! Toate exemplele sunt corecte. Pe pbinfo.ro problema are și alte teste: ');
+    const a = el('a', '', 'trimite-o acolo'); a.href = url(p); a.target = '_blank'; a.rel = 'noopener';
+    li.append(a, '.'); pRes.append(li); list();
+  }
+}
+$('pCheck').addEventListener('click', check);
+$('pShow').addEventListener('click', () => {
+  const p = probOf(ex.value); if (!p) return;
+  show(p, true);
+  if (MOBILE.matches) tab('probleme'); else probsEl.scrollIntoView({ behavior: 'smooth' });
+});
+for (const e of [pQ, pSub, pDif, pOk]) e.addEventListener('input', list);
+CAPITOLE.forEach((c, i) => pSub.add(new Option(c, String(i))));
+DIFICULTATI.forEach((d, i) => pDif.add(new Option(d[0].toUpperCase() + d.slice(1), String(i))));
+
+const doc = store.get('caiet.doc') || '', docName = store.get('caiet.docName');
+if (isProb(doc) && docName) probOption(doc, docName);
+ex.value = isProb(doc) && docName ? doc : store.get('caiet.code') ? 'mine' : '0';
 load(ex.value); run();
+
+pCount.textContent = 'Se încarcă problemele…';
+fetch('probleme/probleme.json').then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<Culegere> }).then(d => {
+  probs = d.probleme;
+  const s = probs.find(p => p.id === +(store.get('caiet.psel') || 0));
+  list();
+  if (s) show(s, false);
+  drawBar();
+}).catch(() => { pCount.textContent = 'Problemele nu s-au putut încărca. Verifică legătura la internet și reîncarcă pagina.' });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode unavailable */ });

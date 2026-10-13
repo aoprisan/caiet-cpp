@@ -4,7 +4,7 @@
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = 'caiet-v1';
-const SHELL = ['./', 'index.html', 'css/style.css', 'dist/ui.js', 'dist/interp.js', 'dist/explain.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
+const SHELL = ['./', 'index.html', 'css/style.css', 'dist/ui.js', 'dist/interp.js', 'dist/explain.js', 'dist/probleme.js', 'probleme/probleme.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 
 sw.addEventListener('install', e => {

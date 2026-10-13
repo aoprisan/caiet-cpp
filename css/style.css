@@ -92,6 +92,63 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .help dd{margin:0; font:400 .9rem/1.6 var(--mono); color:var(--muted); overflow-wrap:anywhere}
 .help p{margin:14px 0 0; color:var(--muted); max-width:65ch}
 #status .goto{display:block; margin-top:8px; background:var(--paper); color:var(--err); border:1px solid currentColor; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer}
+/* Problems: list + statement side by side; the bar above the input checks the program on the examples. */
+.pbar{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:8px}
+.pbar-h{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 12px}
+.pbar-h b{font-family:var(--mono); overflow-wrap:anywhere}
+button.link{background:none; border:0; padding:0; color:var(--accent); font-weight:700; text-decoration:underline; cursor:pointer}
+.check{background:var(--ok-bg); color:var(--ok); border:1px solid currentColor; border-radius:6px; padding:9px 14px; font-weight:700; cursor:pointer}
+:is(.check,button.link):disabled{opacity:.5; cursor:default}
+#pRes{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+#pRes:empty{display:none}
+#pRes li{padding:7px 10px; border-radius:6px; background:var(--ok-bg); color:var(--ok); font-weight:700}
+#pRes li.bad{background:var(--err-bg); color:var(--err)}
+#pRes li.win{background:var(--accent); color:var(--accent-fg)}
+#pRes li.win a{color:inherit}
+#pRes small{display:block; font-weight:400; color:var(--ink); margin-top:2px}
+#pRes .cmp{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; margin:6px 0}
+:is(#pRes,.pex) pre{margin:2px 0 0; padding:6px 8px; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:4px;
+  font:400 14px/20px var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; max-height:200px; overflow:auto}
+#pRes pre.q{color:var(--muted); font-family:var(--body)}
+.pbtn{background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 12px; font-weight:600; cursor:pointer}
+.probs{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:16px 18px; display:grid; grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:24px; align-items:start}
+.probs h2{font-family:var(--display); font-weight:600; font-size:1.25rem; margin:0 0 4px}
+.probs a{color:var(--accent)}
+.psub{margin:0 0 10px; color:var(--muted)}
+.pfilt{display:flex; flex-wrap:wrap; gap:8px}
+#pQ{flex:1 1 100%; min-width:0; font:inherit; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:9px 10px}
+.pfilt select{flex:1 1 150px; width:auto}
+.pok{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:.92rem; cursor:pointer}
+.pok input{accent-color:var(--accent); width:18px; height:18px; margin:0}
+#pCount{margin:10px 0 4px; color:var(--muted); font-size:.9rem}
+#pUl{list-style:none; margin:0; padding:0; max-height:600px; overflow:auto; border-top:1px solid var(--line)}
+#pUl button{display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; text-align:left; padding:7px 10px;
+  background:none; border:0; border-bottom:1px solid var(--line); cursor:pointer}
+#pUl button:hover{background:var(--bg)}
+#pUl button.on{background:var(--cur-bg)}
+#pUl button span:first-child{display:flex; flex-direction:column; min-width:0}
+#pUl b{font-weight:700; overflow-wrap:anywhere}
+#pUl button.stop b{color:var(--muted); font-weight:600}
+#pUl small{color:var(--muted); font-size:.82rem}
+#pUl .ok{color:var(--ok); font-weight:800; font-size:1.1rem}
+#pView{min-width:0; max-height:760px; overflow:auto; padding-right:4px}
+#pView h3{font-family:var(--display); font-weight:800; font-size:1.6rem; line-height:1.1; margin:0; overflow-wrap:anywhere}
+#pView h4{margin:18px 0 4px; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+#pView p{margin:0 0 8px; white-space:pre-line; max-width:70ch}
+#pView ul{margin:0 0 8px; padding-left:1.2em; max-width:70ch}
+#pView img{display:block; max-width:100%; height:auto; margin:8px 0; background:#fff; border-radius:4px}
+#pView .run{margin:4px 0 2px}
+#pView p.pmeta{color:var(--muted); font-size:.92rem; margin:4px 0 12px}
+#pView p.pwarn{background:var(--cur-bg); padding:8px 10px; border-radius:6px}
+#pView p.pwarn.stop{background:var(--err-bg); color:var(--err); font-weight:600}
+#pView p.pfoot{color:var(--muted); font-size:.85rem; margin-top:18px}
+.pnone{color:var(--muted)}
+.pex{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px 12px; align-items:start}
+.pex small{font-size:.78rem; font-weight:700; color:var(--muted)}
+.pex .pexp,.pex .pbtn{grid-column:1/-1}
+.pex .pbtn{justify-self:start}
+.pex .pexp p{margin:0}
+
 /* Phone-only parts; the media query below (and MOBILE in src/ui.ts) turns them on. */
 .tabs,.keys,.mob{display:none}
 
@@ -127,6 +184,14 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
   #sCode{margin:0; padding:6px 10px; font:400 16px/24px var(--mono); white-space:pre; overflow-x:auto; background:var(--cur-bg); border-radius:4px; color:var(--ink)}
   #sCode .ln{color:var(--muted); margin-right:10px}
   .help{flex:1; margin-bottom:12px}
+  .probs{display:block; padding:12px; margin-bottom:12px}
+  .probs.open .plist, .probs:not(.open) #pView{display:none}
+  #pUl,#pView{max-height:none; overflow:visible}
+  #pUl button{min-height:48px}
+  .pback{background:none; border:0; padding:4px 0 10px; color:var(--accent); font-weight:700; cursor:pointer}
+  #pQ{font-size:16px; min-height:44px}
+  .pex,#pRes .cmp{grid-template-columns:minmax(0,1fr)}
+  .check{min-height:44px}
 
   .tabs{display:flex; flex:none; margin:0 calc(-1 * max(12px,env(safe-area-inset-right))) 0 calc(-1 * max(12px,env(safe-area-inset-left)));
     padding-bottom:env(safe-area-inset-bottom); background:var(--paper); border-top:1px solid var(--line)}
