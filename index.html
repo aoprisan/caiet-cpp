@@ -44,6 +44,11 @@
     </div>
     <div class="side">
       <div class="runbox" data-pane="rulare">
+        <div class="pbar" id="pBar" hidden>
+          <div class="pbar-h"><span>Problema <b id="pName"></b></span><button type="button" class="link" id="pShow">Vezi enunțul</button></div>
+          <button type="button" class="check" id="pCheck">✓ Verifică pe exemple</button>
+          <ul id="pRes" aria-live="polite"></ul>
+        </div>
         <div class="panel">
           <label class="label" for="inp">Date de intrare (ce citește cin)</label>
           <textarea id="inp" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="de exemplu: 12 30"></textarea>
@@ -75,6 +80,22 @@
     </div>
   </div>
 
+  <section class="probs" data-pane="probleme" id="probs">
+    <div class="plist">
+      <h2>Probleme de rezolvat</h2>
+      <p class="psub">Probleme de clasa a 9-a de pe <a href="https://www.pbinfo.ro/" target="_blank" rel="noopener">pbinfo.ro</a>. Alege una, scrie rezolvarea și verific-o pe exemple.</p>
+      <div class="pfilt">
+        <input type="search" id="pQ" placeholder="Caută: nume, cuvânt sau #număr" aria-label="Caută o problemă" autocomplete="off">
+        <select id="pSub" aria-label="Capitolul"><option value="">Toate capitolele</option></select>
+        <select id="pDif" aria-label="Dificultatea"><option value="">Orice dificultate</option></select>
+        <label class="pok"><input type="checkbox" id="pOk" checked> Doar cele care merg aici</label>
+      </div>
+      <p id="pCount"></p>
+      <ul id="pUl"></ul>
+    </div>
+    <article id="pView"><p class="pnone">Alege o problemă din listă.</p></article>
+  </section>
+
   <section class="help" data-pane="ajutor">
     <h2>Ce poți folosi</h2>
     <dl>
@@ -92,6 +113,7 @@
     <button type="button" data-tab="cod"><span aria-hidden="true">{ }</span>Cod</button>
     <button type="button" data-tab="rulare"><span aria-hidden="true">▶</span>Rulare</button>
     <button type="button" data-tab="pasi"><span aria-hidden="true">⇥</span>Pași</button>
+    <button type="button" data-tab="probleme"><span aria-hidden="true">≡</span>Probleme</button>
     <button type="button" data-tab="ajutor"><span aria-hidden="true">?</span>Ajutor</button>
   </nav>
 </div>

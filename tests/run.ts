@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { compile, CppError } from '../src/interp.js';
 import { explain } from '../src/explain.js';
+import { note, matches, same, verifica, blocuri, type Problema } from '../src/probleme.js';
 
 const H = '#include <iostream>\nusing namespace std;\nint main(){\n', F = '\nreturn 0;}';
 const out = (body: string, inp?: string) => compile(H + body + F).run(inp || '').out;
@@ -41,5 +42,37 @@ t('explain: cin, for, modulo note', () => {
   assert.match(explain('cin >> a >> b;')[0], /variabilele a, b/);
   assert.match(explain('for (int d = 1; d <= n; d++) {')[0], /d este cel mult n/);
   assert.equal(explain('s = s + n % 10; // x').length, 3);
+});
+const P = (o: Partial<Problema>): Problema => ({ id: 939, slug: 'sum00', nume: 'sum00', sub: 0, dif: 0, cerinta: 'Calculați suma numerelor.', intrare: '', iesire: '', restrictii: '', ex: [{ in: '12\n23', out: '35' }], ...o });
+t('probleme: output compared by words, not spaces', () => {
+  assert.ok(same('1 2\n3\n', '1 2 3'));
+  assert.ok(!same('1 23', '1 2 3'));
+});
+t('probleme: check a program on every example', () => {
+  const p = P({ ex: [{ in: '12\n23', out: '35' }, { in: '1 1', out: '3' }, { in: '5', out: '5' }] });
+  const r = verifica(H + 'int a,b;cin>>a>>b;cout<<a+b;' + F, p);
+  assert.deepEqual(r.map(x => x.ok), [true, false, false]);
+  assert.equal(r[1].out, '2');
+  assert.equal(r[2].err?.kind, 'run');
+  assert.throws(() => verifica(H + 'int a' + F, p), CppError);
+});
+t('probleme: notes for what int cannot do', () => {
+  assert.deepEqual(note(P({})), { text: [], stop: false });
+  assert.ok(note(P({ ex: [{ in: '2.5', out: '5' }] })).stop);
+  assert.ok(note(P({ ex: [{ in: '4\n*', out: '****' }] })).stop);
+  assert.ok(note(P({ ex: [{ in: '1870413123455', out: 'Major' }] })).stop);
+  const big = note(P({ restrictii: '- 1 ≤ n ≤ 10¹⁰' }));
+  assert.ok(!big.stop && big.text.length === 1);
+  assert.equal(note(P({ restrictii: '- 1 ≤ n < 1.000.000.000' })).text.length, 0);
+  assert.match(note(P({ fis: 'maxim' })).text[0], /maxim\.in/);
+});
+t('probleme: search ignores diacritics, # finds by number', () => {
+  assert.ok(matches(P({}), 'suma'));
+  assert.ok(matches(P({ cerinta: 'Câte numere sunt pare?' }), 'cate pare'));
+  assert.ok(matches(P({}), '#939'));
+  assert.ok(!matches(P({}), '93'));
+});
+t('probleme: statement blocks', () => {
+  assert.deepEqual(blocuri('Primul.\nRând nou.\n\n- a\n- b'), [{ p: 'Primul.\nRând nou.' }, { li: ['a', 'b'] }]);
 });
 console.log(n + ' tests passed');
