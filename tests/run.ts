@@ -39,6 +39,47 @@ t('trace records variables per step', () => {
   assert.deepEqual(last.vars.map(v => v[0] + '=' + v[1]), ['s=3']);
   assert.ok(r.trace.some(s => s.vars.some(v => v[0] === 'i' && v[1] === 2)));
 });
+t('pointers: &, *, nullptr, comparison', () => {
+  assert.equal(out('int a = 5;\nint *p = &a;\n*p = 6;\ncout << a << " " << *p;'), '6 6');
+  assert.equal(out('int a = 1, b = 2;\nint *p = &a, *q = &b;\ncout << (p == q);\nq = p;\n*q = *q + 10;\ncout << (p == q) << a;'), '0111');
+  assert.equal(out('int* p = nullptr;\nint a = 3;\nif (p == nullptr) p = &a;\nif (p) cout << *p * 2;'), '6');
+  assert.equal(out('int a, b;\nint *p = &a, *q = &b;\ncout << p << " " << q << " " << nullptr;'), '0x1000 0x1004 0');
+  assert.equal(out('int x;\nint *p = &x;\ncin >> x;\ncout << *p;', '9'), '9');
+});
+t('pointers: the stepper shows where they point', () => {
+  const r = compile(H + 'int a = 1;\nint *p;\nint *q = nullptr;\np = &a;\n{\nint b = 2;\nq = &b;\n}\ncout << a;' + F).run('');
+  const last = r.trace.at(-2)!.vars.map(v => v[0] + ':' + (v[3] ?? v[1]));
+  assert.deepEqual(last, ['a:1', 'p:a', 'q:b (nu mai există)']);
+  assert.deepEqual(r.trace[3].vars.map(v => v[3] ?? v[1]), [1, undefined, 'nullptr']);
+});
+t('pointers: run-time errors', () => {
+  for (const [body, re] of [
+    ['int *p = nullptr;\ncout << *p;', /nullptr/],
+    ['int *p;\n{\nint b = 2;\np = &b;\n}\ncout << *p;', /scoasă de pe stivă/],
+    ['int a;\nint *p = &a;\ncout << *p;', /înainte să primească o valoare/],
+  ] as const) {
+    const e = err(H + body + F);
+    assert.equal(e.kind, 'run', body); assert.match(e.message, re, body);
+  }
+});
+t('pointers: friendly compile errors', () => {
+  for (const [body, re] of [
+    ['int a;\nint *p = 5;', /doar adresa unei variabile/],
+    ['int a = 1;\nint *p = &a;\nint b = p;', /scrie \*p/],
+    ['int a = 1;\nint *p = &a;\np = p + 1;', /calcule/],
+    ['int a = 1;\nint *p = &a;\np++;', /calcule/],
+    ['int a = 1;\ncout << *a;', /„a” este int/],
+    ['int a = 1;\nint *p = &a;\nint **q;', /pointer la pointer/i],
+    ['int a = 1;\nint &r = a;', /Referințele/],
+    ['int a = 1, b = 3;\ncout << (a & b);', /&&/],
+    ['int a = 1;\nint *p = &a;\ncout << (p == a);', /alt pointer sau cu nullptr/],
+    ['int *p;\ncin >> p;', /cin/],
+    ['int a = 1;\ncout << &5;', /în fața unei variabile/],
+  ] as const) {
+    const e = err(H + body + F);
+    assert.equal(e.kind, 'compile', body); assert.match(e.message, re, body);
+  }
+});
 t('explain: cin, for, modulo note', () => {
   assert.match(explain('cin >> a >> b;')[0], /variabilele a, b/);
   assert.match(explain('for (int d = 1; d <= n; d++) {')[0], /d este cel mult n/);
@@ -76,7 +117,12 @@ t('probleme: search ignores diacritics, # finds by number', () => {
 t('probleme: statement blocks', () => {
   assert.deepEqual(blocuri('Primul.\nRând nou.\n\n- a\n- b'), [{ p: 'Primul.\nRând nou.' }, { li: ['a', 'b'] }]);
 });
-const vars = (body: string) => compile(H + body + F).run('').trace.at(-1)!.vars.map(v => [v[0], v[1]]);
+// A demo cut inside a block gets a last statement there (its snapshot sees the block's variables), then its closing braces.
+function vars(body: string) {
+  const open = (body.match(/\{/g) || []).length - (body.match(/\}/g) || []).length;
+  if (open) body += '\ncout << "";' + '}'.repeat(open);
+  return compile(H + body + F).run('').trace.at(open ? -2 : -1)!.vars.map(v => [v[0], v[3] ?? v[1]]);
+}
 t('intro: every demo line leaves memory as the interpreter does', () => {
   for (const d of DEMOS) {
     d.steps.forEach((s, i) => {
@@ -87,7 +133,30 @@ t('intro: every demo line leaves memory as the interpreter does', () => {
       assert.deepEqual(memorie(d, i + 1), vars(d.lines.slice(0, s.line + 1).join('\n')), d.name + ', line ' + (s.line + 1));
     });
     assert.equal(d.steps.at(-1)!.line, d.lines.length - 1, d.name + ' ends on its last line');
+    assert.ok(memorie(d, d.steps.length).length <= 4, d.name + ' fits in the four boxes shown');
   }
+});
+t('intro: the stack demo frees boxes from the top', () => {
+  const d = DEMOS.find(d => d.steps.some(s => s.free))!;
+  const i = d.steps.findIndex(s => s.free);
+  assert.deepEqual(memorie(d, i).map(v => v[0]), ['a', 'b', 'c']);
+  assert.deepEqual(memorie(d, i + 1).map(v => v[0]), ['a']);
+  assert.deepEqual(memorie(d, d.steps.length), [['a', 7], ['d', 8]]);
+});
+t('explain: pointers', () => {
+  assert.deepEqual(explain('int *p = &a;'), ['Creează pointerul p (o cutie care ține adresa altei cutii). p pornește cu adresa lui a: arată spre cutia a.',
+    'Semnul & în fața unei variabile înseamnă „adresa ei”: &a este numărul cutiei lui a.']);
+  assert.match(explain('int a = 5, *q = nullptr;')[0], /variabila a .* pointerul q .* nullptr/);
+  assert.match(explain('p = &b;')[0], /^p primește adresa lui b/);
+  assert.match(explain('*p = *p * 2;')[0], /cutia spre care arată p \(nu în p\)/);
+  assert.match(explain('*p = 6;').join(' '), /Semnul \*/);
+  assert.match(explain('cout << *p << &a;')[0], /cutia spre care arată p, apoi adresa lui a/);
+  assert.equal(explain('c = a * b;').length, 1);
+  assert.equal(explain('if (a && b) {').length, 1);
+});
+t('explain: braces mention the stack', () => {
+  assert.match(explain('{').join(' '), /stivă/);
+  assert.match(explain('}').join(' '), /stivă/);
 });
 t('intro: quiz answers match the interpreter', () => {
   for (const q of INTREBARI) {

@@ -3,8 +3,11 @@
 const LIMIT = 20000000, OUTMAX = 200000, INTMAX = 2147483647, TMAX = 2000;
 
 export type ErrorKind = 'compile' | 'run';
-/** One variable as seen by the stepper: name, value (undefined = no value yet), is it global. */
-export type VarView = [name: string, value: number | undefined, global: boolean];
+/**
+ * One variable as seen by the stepper: name, value (undefined = no value yet), is it global, and for a pointer
+ * what it points to: the variable's name, „nullptr”, or the name followed by „(nu mai există)” once that box left the stack.
+ */
+export type VarView = [name: string, value: number | undefined, global: boolean, to?: string];
 export interface Snapshot { line: number; vars: VarView[]; out: number }
 export interface RunResult { out: string; steps: number; trace: Snapshot[]; end: Snapshot; cut: boolean }
 export interface Program { run(input?: string): RunResult }
@@ -26,9 +29,9 @@ type TokType = 'num' | 'id' | 'op' | 'str' | 'eof';
 /** `v` is the source text (or the decoded string for `str`); `n` is the value of a `num`. */
 interface Tok { t: TokType; v: string; line: number; n?: number }
 
-const KEY = new Set(['int', 'if', 'else', 'while', 'for', 'do', 'return', 'break', 'continue', 'cin', 'cout', 'endl', 'using', 'namespace', 'std', 'main']);
+const KEY = new Set(['int', 'if', 'else', 'while', 'for', 'do', 'return', 'break', 'continue', 'cin', 'cout', 'endl', 'using', 'namespace', 'std', 'main', 'nullptr']);
 const NOTYPE = new Set(['float', 'double', 'char', 'string', 'bool', 'long', 'short', 'unsigned', 'void']);
-const OPS = ['<<', '>>', '<=', '>=', '==', '!=', '&&', '||', '++', '--', '+=', '-=', '*=', '/=', '%=', '+', '-', '*', '/', '%', '<', '>', '=', '!', '(', ')', '{', '}', ';', ','];
+const OPS = ['<<', '>>', '<=', '>=', '==', '!=', '&&', '||', '++', '--', '+=', '-=', '*=', '/=', '%=', '+', '-', '*', '/', '%', '<', '>', '=', '!', '(', ')', '{', '}', ';', ',', '&'];
 const ESC: Record<string, string> = { n: '\n', t: '\t', '\\': '\\', '"': '"', "'": "'", '0': '\0' };
 
 function lex(src: string): { toks: Tok[]; inc: boolean } {
@@ -85,8 +88,12 @@ function lex(src: string): { toks: Tok[]; inc: boolean } {
   return { toks, inc };
 }
 
-/** An expression closure. `slot`/`vname` are set when it is a bare variable (so it can be assigned). */
-type Expr = (() => number) & { slot?: number; vname?: string };
+/**
+ * An expression closure. `at` is set when it names a box that can be assigned (a variable, or `*p`) and returns
+ * that box's slot. `ptr` marks a pointer: its value is the slot it points to
+ * plus 1 (0 = nullptr), so the address of a box never changes while the box exists.
+ */
+type Expr = (() => number) & { at?: () => number; vname?: string; ptr?: boolean };
 /** Statement result: 0 normal, 1 break, 2 continue, 3 return. */
 type Flow = 0 | 1 | 2 | 3;
 type Stmt = () => Flow;
@@ -95,10 +102,14 @@ export function compile(src: string): Program {
   const { toks, inc } = lex(src);
   let p = 0, nslots = 0, loops = 0, usingStd = false, steps = 0, outLen = 0, input = '', ip = 0;
   let mem: (number | undefined)[] = [], out: string[] = [], live: number[] = [], trace: Snapshot[] = [];
-  const names: string[] = [], gl: boolean[] = [];
+  const names: string[] = [], gl: boolean[] = [], isPtr: boolean[] = [];
   function snap(line: number): Snapshot {
     const v: VarView[] = [];
-    for (const s of live) v.push([names[s], mem[s], !!gl[s]]);
+    for (const s of live) {
+      const x = mem[s];
+      if (!isPtr[s] || x === undefined) v.push([names[s], x, !!gl[s]]);
+      else v.push([names[s], x, !!gl[s], x === 0 ? 'nullptr' : names[x - 1] + (live.includes(x - 1) ? '' : ' (nu mai există)')]);
+    }
     return { line, vars: v, out: outLen };
   }
   const scopes: Map<string, number>[] = [new Map()];
@@ -140,7 +151,8 @@ export function compile(src: string): Program {
   function primary(): Expr {
     const t = next();
     if (t.t === 'num') { const v = t.n!; return () => v }
-    if (t.t === 'op' && t.v === '(') { const e = expr(); expect(')'); return () => e() }
+    if (t.t === 'op' && t.v === '(') { const e = expr(); expect(')'); const f: Expr = () => e(); f.ptr = e.ptr; return f }
+    if (t.t === 'id' && t.v === 'nullptr') { const f: Expr = () => 0; f.ptr = true; return f }
     if (t.t === 'id') {
       if (NOTYPE.has(t.v)) throw E('Aici folosim doar numere întregi (int). „' + t.v + '” nu este disponibil.', t.line);
       if (KEY.has(t.v)) throw E('„' + t.v + '” nu poate apărea aici.', t.line);
@@ -152,30 +164,60 @@ export function compile(src: string): Program {
         if (x === undefined) throw E('Variabila „' + name + '” este folosită înainte să primească o valoare.', line, 'run');
         return x;
       };
-      f.slot = s; f.vname = name; return f;
+      f.at = () => s; f.vname = name; f.ptr = isPtr[s]; return f;
     }
     if (t.t === 'str') throw E('Textul poate fi folosit doar la afișare, după cout <<.', t.line);
     throw E('Aici trebuia un număr sau o variabilă, dar am găsit ' + show(t) + '.', t.t === 'eof' ? (toks[p - 2] || t).line : t.line);
   }
-  function needVar(a: Expr, t: Tok): number {
-    if (a.slot === undefined) throw E('„' + t.v + '” se poate aplica doar unei variabile.', t.line);
-    return a.slot;
+  function needVar(a: Expr, t: Tok): () => number {
+    if (!a.at) throw E('„' + t.v + '” se poate aplica doar unei variabile.', t.line);
+    noPtr(a, t);
+    return a.at;
+  }
+  const PTRCALC = 'Cu pointerii nu facem calcule în acest caiet. Pentru numărul din cutia spre care arată pointerul, scrie *';
+  function noPtr(a: Expr, t: Tok) {
+    if (a.ptr) throw E(PTRCALC + (a.vname || 'p') + '.', t.line);
+  }
+  /** `*p`: the box p points to. Fails at run time if p is nullptr or its box was taken off the stack. */
+  function deref(t: Tok, a: Expr): Expr {
+    if (!a.ptr) throw E('„*” în fața unei valori se pune doar la un pointer' + (a.vname ? ', iar „' + a.vname + '” este int.' : '.'), t.line);
+    const line = t.line, who = a.vname ? 'pointerul „' + a.vname + '”' : 'pointerul';
+    const at = () => {
+      const x = a();
+      if (x === 0) throw E('Nu poți folosi *' + (a.vname || 'p') + ': ' + who + ' este nullptr, adică nu arată spre nicio cutie.', line, 'run');
+      if (!live.includes(x - 1)) throw E('Cutia „' + names[x - 1] + '”, spre care arată ' + who + ', nu mai există: a fost scoasă de pe stivă la „}”.', line, 'run');
+      return x - 1;
+    };
+    const f: Expr = () => {
+      const s = at(), x = mem[s];
+      if (x === undefined) throw E('Variabila „' + names[s] + '” (spre care arată ' + who + ') este folosită înainte să primească o valoare.', line, 'run');
+      return x;
+    };
+    f.at = at; f.vname = '*' + (a.vname || ''); f.ptr = false; return f;
   }
   function postfix(): Expr {
     const a = primary();
     if (isOp('++', '--')) {
-      const t = next(), s = needVar(a, t), d = t.v === '++' ? 1 : -1;
-      return () => { const x = a(); mem[s] = (x + d) | 0; return x };
+      const t = next(), at = needVar(a, t), d = t.v === '++' ? 1 : -1;
+      return () => { const x = a(); mem[at()] = (x + d) | 0; return x };
     }
+    if (isOp('&')) throw E('Semnul & se pune în fața unei variabile, ca să îi iei adresa: &a. Pentru „și” folosește &&.', peek().line);
     return a;
   }
   function unary(): Expr {
-    if (isOp('-')) { next(); const a = unary(); return () => (-a()) | 0 }
-    if (isOp('+')) { next(); return unary() }
+    if (isOp('-')) { const t = next(), a = unary(); noPtr(a, t); return () => (-a()) | 0 }
+    if (isOp('+')) { const t = next(), a = unary(); noPtr(a, t); return a }
     if (isOp('!')) { next(); const a = unary(); return () => a() === 0 ? 1 : 0 }
+    if (isOp('*')) { const t = next(); return deref(t, unary()) }
+    if (isOp('&')) {
+      const t = next(), a = unary();
+      if (!a.at) throw E('„&” se pune în fața unei variabile, ca să îi iei adresa: &a.', t.line);
+      if (a.ptr) throw E('Adresa unui pointer (pointer la pointer) nu este disponibilă în acest caiet.', t.line);
+      const at = a.at, f: Expr = () => at() + 1; f.ptr = true; return f;
+    }
     if (isOp('++', '--')) {
-      const t = next(), a = unary(), s = needVar(a, t), d = t.v === '++' ? 1 : -1;
-      return () => (mem[s] = (a() + d) | 0);
+      const t = next(), a = unary(), at = needVar(a, t), d = t.v === '++' ? 1 : -1;
+      return () => { const x = (a() + d) | 0; return (mem[at()] = x) };
     }
     return postfix();
   }
@@ -191,6 +233,9 @@ export function compile(src: string): Program {
   }
   function mk(t: Tok, a: Expr, b: Expr): Expr {
     const o = t.v, line = t.line;
+    if (o === '==' || o === '!=') {
+      if (!!a.ptr !== !!b.ptr) throw E('Un pointer se poate compara doar cu alt pointer sau cu nullptr.', line);
+    } else if (o !== '||' && o !== '&&') { noPtr(a, t); noPtr(b, t) }
     switch (o) {
       case '||': return () => (a() !== 0 || b() !== 0) ? 1 : 0;
       case '&&': return () => (a() !== 0 && b() !== 0) ? 1 : 0;
@@ -212,15 +257,21 @@ export function compile(src: string): Program {
     while (isOp(...LV[l])) { const t = next(); a = mk(t, a, bin(l + 1)) }
     return a;
   }
+  /** Checks that a value of `b`'s kind may be put in a box of kind `ptr` named `name`. */
+  function fits(ptr: boolean, name: string, b: Expr, line: number) {
+    if (ptr && !b.ptr) throw E('Pointerul „' + name + '” poate primi doar adresa unei variabile (de exemplu &a) sau nullptr, nu un număr.', line);
+    if (!ptr && b.ptr) throw E('În „' + name + '” se pun numere, nu adrese. Pentru numărul din cutia spre care arată pointerul, scrie *' + (b.vname || 'p') + '.', line);
+  }
   function expr(): Expr {
     const a = bin(0);
     if (isOp('=', '+=', '-=', '*=', '/=', '%=')) {
       const t = next();
-      if (a.slot === undefined) throw E('În stânga lui „' + t.v + '” trebuie să fie o variabilă.', t.line);
-      const b = expr(), s = a.slot, line = t.line;
-      if (t.v === '=') return () => (mem[s] = b());
+      if (!a.at) throw E('În stânga lui „' + t.v + '” trebuie să fie o variabilă.', t.line);
+      const b = expr(), at = a.at, line = t.line;
+      if (t.v === '=') { fits(!!a.ptr, a.vname || '', b, line); const f: Expr = () => { const v = b(); return (mem[at()] = v) }; f.ptr = a.ptr; return f }
+      noPtr(a, t); noPtr(b, t);
       const o = t.v[0];
-      return () => { const x = a(); return (mem[s] = arith(o, line, x, b())) };
+      return () => { const x = a(); return (mem[at()] = arith(o, line, x, b())) };
     }
     return a;
   }
@@ -229,10 +280,13 @@ export function compile(src: string): Program {
   function decl(global: boolean): Stmt {
     const line = next().line, parts: [number, Expr | null][] = [];
     do {
+      if (isOp('&')) throw E('Referințele (int &) nu sunt disponibile în acest caiet. Folosește un pointer: int *p = &a;', peek().line);
+      const ptr = isOp('*') && !!next();
+      if (ptr && isOp('*')) throw E('Pointer la pointer (int **) nu este disponibil în acest caiet.', peek().line);
       const t = next(); let init: Expr | null = null;
       if (isOp('[') || peek().t === 'eof') throw E('Declarație neterminată.', t.line);
-      if (isOp('=')) { next(); init = expr() }
-      const s = declare(t); if (global) gl[s] = true;
+      if (isOp('=')) { next(); init = expr(); fits(ptr, t.v, init, t.line) }
+      const s = declare(t); isPtr[s] = ptr; if (global) gl[s] = true;
       parts.push([s, init]);
     } while (isOp(',') && next());
     if (isOp('(')) throw E('Funcțiile proprii nu sunt disponibile în acest caiet. Scrie tot programul în main.', peek().line);
@@ -331,6 +385,7 @@ export function compile(src: string): Program {
             if (v.t !== 'id') throw E('După >> trebuie să urmeze o variabilă.', v.line);
             const s = lookup(v.v);
             if (s === undefined) throw E('Variabila „' + v.v + '” nu a fost declarată. Scrie mai întâi: int ' + v.v + ';', v.line);
+            if (isPtr[s]) throw E('„' + v.v + '” este un pointer: cu cin se citesc doar numere, în variabile int.', v.line);
             slots.push(s);
           }
           if (isOp('<<')) throw E('La cin se folosește >> (nu <<).', line);
@@ -345,7 +400,7 @@ export function compile(src: string): Program {
             next();
             if (peek().t === 'str') { const s = next().v; items.push(() => s) }
             else if (isId('endl')) { next(); items.push(() => '\n') }
-            else { const e = bin(4); items.push(() => String(e())) }
+            else { const e = bin(4); items.push(e.ptr ? () => adresa(e()) : () => String(e())) }
           }
           if (isOp('>>')) throw E('La cout se folosește << (nu >>).', line);
           expect(';');
@@ -364,6 +419,8 @@ export function compile(src: string): Program {
     const e = expr(); expect(';');
     return () => { tick(line); e(); return 0 };
   }
+  /** How cout shows a pointer: 0 for nullptr, else a made-up address, 4 bytes (one int) per box, like 0x1000. */
+  const adresa = (x: number) => x === 0 ? '0' : '0x' + (0x1000 + 4 * (x - 1)).toString(16);
   function readInt(line: number): number {
     while (ip < input.length && /\s/.test(input[ip])) ip++;
     if (ip >= input.length) throw E('Programul vrea să citească un număr, dar datele de intrare s-au terminat. Scrie mai multe numere în caseta „Date de intrare”.', line, 'run');

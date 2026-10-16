@@ -100,7 +100,7 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .intro h3.isec{font-family:var(--display); font-weight:600; font-size:1.2rem; margin-top:8px}
 .intro p,.intro ol{margin:0}
 .intro code{font-family:var(--mono); font-size:.92em; background:var(--cur-bg); padding:0 4px; border-radius:4px; white-space:nowrap}
-.icards{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px}
+.icards{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px}
 .icard{border:1px solid var(--line); border-radius:6px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; background:var(--bg)}
 .icard ol{padding-left:1.3em}
 .ipic{height:56px; display:flex; align-items:center; gap:6px; font-family:var(--mono)}
@@ -109,6 +109,12 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .ipic.ram{display:grid; grid-template-columns:repeat(6,minmax(0,34px)); grid-template-rows:26px; height:auto; padding:15px 0}
 .ipic.ram i{font-style:normal; font-size:.75rem; color:var(--muted); border:2px solid var(--ink); border-radius:3px; display:grid; place-items:center; background:var(--paper)}
 .ipic.box span,.ipic.arrow span{font-weight:600; color:var(--hl-kw)}
+.ipic.ptr span{font-weight:600; color:var(--hl-kw)}
+.ipic.ptr b{min-width:40px; height:44px; display:grid; place-items:center; border:2px solid var(--ink); border-radius:4px; background:var(--paper); font-size:1.2rem}
+.ipic.ptr em{font-style:normal; font-size:1.6rem; color:var(--accent)}
+.ipic.stack{display:grid; grid-template-columns:48px auto; grid-auto-rows:15px; gap:2px 8px; align-content:center}
+.ipic.stack i{grid-column:1; font-style:normal; font-size:.75rem; font-weight:600; color:var(--hl-kw); border:2px solid var(--ink); border-radius:3px; display:grid; place-items:center; background:var(--paper)}
+.ipic.stack em{grid-column:2; grid-row:1; font-style:normal; font-family:var(--body); font-size:.8rem; font-weight:700; color:var(--accent); align-self:center}
 .ipic.box b,.ipic.arrow b{min-width:48px; height:44px; display:grid; place-items:center; border:2px solid var(--ink); border-radius:4px; background:var(--paper); font-size:1.2rem}
 .ipic.arrow em{font-style:normal; font-size:1.6rem; color:var(--accent)}
 .ipic.arrow span{min-width:48px; height:44px; display:grid; place-items:center; border:2px solid var(--ink); border-radius:4px; background:var(--paper)}
@@ -123,15 +129,17 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 #dCode div.cur{background:var(--cur-bg); box-shadow:inset 3px 0 0 var(--accent)}
 #dCode .kw{color:var(--hl-kw)} #dCode .num{color:var(--hl-num)} #dCode .io{color:var(--hl-io)}
 .dcpu{min-height:40px; padding:6px 12px; border-radius:6px; background:var(--ink); color:var(--paper); font:600 18px/28px var(--mono)}
-.dmem{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px}
-.dbox{border:2px solid var(--ink); border-radius:4px; padding:4px 6px; display:flex; flex-direction:column; align-items:center; min-height:84px;
-  font-family:var(--mono); transition:background .2s}
+.dmem{display:flex; flex-direction:column; gap:6px}
+.dbox{border:2px solid var(--ink); border-radius:4px; padding:4px 10px; display:grid; grid-template-columns:3.6em minmax(1em,1fr) auto 4em; align-items:center; gap:6px;
+  min-height:42px; font-family:var(--mono); transition:background .2s}
 .dbox small{font-family:var(--body); font-size:.72rem; color:var(--muted)}
-.dbox .dname{font-weight:600; color:var(--hl-kw)}
-.dbox b{font-size:1.25rem; font-variant-numeric:tabular-nums}
-.dbox.empty b{font-size:.85rem; font-weight:400; color:var(--muted); font-family:var(--body); margin-top:5px}
-.dbox.free{border-style:dashed; border-color:var(--line); color:var(--muted); justify-content:flex-start}
-.dbox.free span{font-family:var(--body); font-size:.85rem; margin-top:8px}
+.dbox .dname{font-weight:600; color:var(--hl-kw); overflow-wrap:anywhere}
+.dbox b{font-size:1.25rem; line-height:28px; font-variant-numeric:tabular-nums}
+.dbox em{font-family:var(--body); font-style:normal; font-size:.78rem; font-weight:700; color:var(--accent); text-align:right}
+.dbox b.ptr{font-size:.92rem; font-weight:600; color:var(--accent); white-space:nowrap}
+.dbox.empty b{font-size:.85rem; font-weight:400; color:var(--muted); font-family:var(--body)}
+.dbox.free{border-style:dashed; border-color:var(--line); color:var(--muted)}
+.dbox.free span{grid-column:2 / -1; font-family:var(--body); font-size:.85rem}
 .dbox.r{outline:3px solid var(--hl-io); outline-offset:1px}
 .dbox.w{background:var(--cur-bg); outline:3px solid var(--accent); outline-offset:1px}
 .dsay{min-height:3em; font-weight:600}

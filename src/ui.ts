@@ -14,7 +14,8 @@ const EX: { name: string; inp: string; code: string }[] = [
   ...DEMOS.map(d => ({
     name: d.name, inp: '',
     code: H + d.lines.map(l => '    ' + l + '\n').join('')
-      + '    cout << ' + memorie(d, d.steps.length).map(v => '"' + v[0] + ' = " << ' + v[0]).join(' << ", " << ') + ' << endl;\n' + F,
+      // A pointer prints the number it points to (*p), not its address.
+      + '    cout << ' + memorie(d, d.steps.length).map(v => (typeof v[1] === 'string' ? '"*' + v[0] + ' = " << *' : '"' + v[0] + ' = " << ') + v[0]).join(' << ", " << ') + ' << endl;\n' + F,
   })),
   { name: 'Suma a două numere', inp: '12 30', code: H + '    int a, b;\n    cin >> a >> b;\n    cout << "Suma este " << a + b << endl;\n' + F },
   { name: 'Maximul dintre trei numere', inp: '7 19 4', code: H + '    int a, b, c, maxim;\n    cin >> a >> b >> c;\n    maxim = a;\n    if (b > maxim) {\n        maxim = b;\n    }\n    if (c > maxim) {\n        maxim = c;\n    }\n    cout << "Cel mai mare: " << maxim << endl;\n' + F },
@@ -35,7 +36,7 @@ const keys = $('keys'), follow = $('follow'), sCode = $('sCode');
 const hl = $('hl'), band = $('band'), layer = $('layer'), range = $<HTMLInputElement>('sRange'), sLabel = $('sLabel'), stackEl = $('stack');
 let badLine = 0, curLine = 0, lines = 0, steps: Snapshot[] = [], cur = 0, fullOut = '', lastErr: CppError | null = null, cut = false;
 
-const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|if|else|while|for|do|return|break|continue|using|namespace)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
+const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|if|else|while|for|do|return|break|continue|using|namespace|nullptr)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
 const CLS = ['com', 'str', 'pre', 'num', 'kw', 'io'];
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function paint(src: string): string {
@@ -78,16 +79,16 @@ code.addEventListener('click', drawExplain);
 // Phones move the caret by long-press and drag, which fires neither keyup nor click.
 document.addEventListener('selectionchange', () => { if (document.activeElement === code && !curLine) drawExplain() });
 
-/** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step). */
-type Cell = [name: string, value: number | undefined, global: boolean, idx: number];
+/** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step), what a pointer points to. */
+type Cell = [name: string, value: number | undefined, global: boolean, idx: number, to?: string];
 function frame(title: string, vars: Cell[], prev: Snapshot | undefined, from: boolean): HTMLElement {
   const f = document.createElement('div'); f.className = 'frame';
   const h = document.createElement('h3'); h.textContent = title; f.append(h);
   if (!vars.length) { const p = document.createElement('p'); p.className = 'none'; p.textContent = 'Nicio variabilă încă.'; f.append(p) }
   for (let i = vars.length - 1; i >= 0; i--) {
-    const [name, val, , idx] = vars[i], c = document.createElement('div'); c.className = 'cell';
+    const [name, val, , idx, to] = vars[i], c = document.createElement('div'); c.className = 'cell';
     const b = document.createElement('b'); b.textContent = name;
-    const v = document.createElement('span'); v.textContent = val === undefined ? '?' : String(val);
+    const v = document.createElement('span'); v.textContent = to ? (to === 'nullptr' ? to : '→ ' + to) : val === undefined ? '?' : String(val);
     if (val === undefined) v.className = 'q';
     const o = prev && prev.vars[idx];
     if (from && (!o || o[0] !== name || o[1] !== val)) c.classList.add('chg');
@@ -111,7 +112,7 @@ function showStep(i: number) {
     + (cut ? ' Programul are mulți pași, se pot urmări doar primii 2000.' : '');
   stackEl.innerHTML = '';
   if (s) {
-    const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k]);
+    const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k, v[3]]);
     stackEl.append(frame('main()', all.filter(v => !v[2]), prev, cur > 0));
     const g = all.filter(v => v[2]);
     if (g.length) stackEl.append(frame('variabile globale', g, prev, cur > 0));
@@ -248,7 +249,7 @@ const KEYS: { l: string; t?: string; a?: () => void; c?: string; title?: string 
   { l: '<<', t: ' << ' }, { l: '>>', t: ' >> ' }, { l: '"', t: '"|"' },
   { l: '=', t: '=' }, { l: '==', t: ' == ' }, { l: '!=', t: ' != ' }, { l: '<', t: '<' }, { l: '>', t: '>' },
   { l: '+', t: '+' }, { l: '-', t: '-' }, { l: '*', t: '*' }, { l: '/', t: '/' }, { l: '%', t: '%' },
-  { l: '&&', t: ' && ' }, { l: '||', t: ' || ' }, { l: '!', t: '!' },
+  { l: '&&', t: ' && ' }, { l: '||', t: ' || ' }, { l: '!', t: '!' }, { l: '&', t: '&' },
   { l: 'int', t: 'int |;', c: 'w' }, { l: 'cin', t: 'cin >> |;', c: 'w' }, { l: 'cout', t: 'cout << | << endl;', c: 'w' },
   { l: 'endl', t: 'endl', c: 'w' }, { l: 'if', t: 'if (|) {\n    \n}', c: 'w' }, { l: 'else', t: ' else {\n    |\n}', c: 'w' },
   { l: 'for', t: 'for (int i = 1; i <= |; i++) {\n    \n}', c: 'w' }, { l: 'while', t: 'while (|) {\n    \n}', c: 'w' },
@@ -276,16 +277,22 @@ function drawIntro() {
 function showDemo(i: number) {
   const d = DEMOS[demo], n = d.steps.length;
   dStep = Math.max(0, Math.min(n, i));
-  const s = d.steps[dStep - 1], mem = memorie(d, dStep);
+  const s = d.steps[dStep - 1], mem = memorie(d, dStep), was = memorie(d, dStep - 1);
   dCode.innerHTML = d.lines.map((l, k) => '<div' + (s?.line === k ? ' class="cur"' : '') + '>' + paint(l) + '</div>').join('');
   dCpu.textContent = s?.cpu ?? '';
   dMem.innerHTML = '';
-  for (let k = 0; k < 4; k++) {
+  // A stack: box 1 at the bottom, the last box taken (the top) drawn highest.
+  for (let k = 3; k >= 0; k--) {
     const v = mem[k], box = el('div', 'dbox');
     box.append(el('small', '', 'cutia ' + (k + 1)));
-    if (!v) { box.classList.add('free'); box.append(el('span', '', 'liberă')) }
-    else {
-      box.append(el('span', 'dname', v[0]), el('b', '', v[1] === undefined ? 'goală' : String(v[1])));
+    if (!v) {
+      const gone = s?.free && was[k];
+      box.classList.add('free'); box.append(el('span', '', gone ? 'scoasă de pe stivă (era ' + gone[0] + ')' : 'liberă'));
+      if (gone) box.classList.add('w');
+    } else {
+      const to = typeof v[1] === 'string' ? mem.findIndex(w => w[0] === v[1]) : -1;
+      box.append(el('span', 'dname', v[0]), el('b', to < 0 ? '' : 'ptr', v[1] === undefined ? 'goală' : to < 0 ? String(v[1]) : '→ ' + v[1] + ' (cutia ' + (to + 1) + ')'));
+      if (k === mem.length - 1) box.append(el('em', '', '← vârf'));
       if (v[1] === undefined) box.classList.add('empty');
       if (s?.read?.includes(v[0])) box.classList.add('r');
       if (s?.decl === v[0] || s?.set?.[0] === v[0]) box.classList.add('w');
