@@ -1,7 +1,9 @@
-// Page wiring: intro (processor and memory), editor, highlighting, run, step-through stack view, examples, pbinfo problems.
+// Page wiring: intro (processor and memory), editor, highlighting, run, step-through stack view, machine view (CPU, memory, buses),
+// examples, pbinfo problems.
 import { compile, CppError, type RunResult, type Snapshot } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
+import { MASINI, masina, type Cadru, type Masina } from './masina.js';
 import { CAPITOLE, DIFICULTATI, blocuri, matches, note, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -156,6 +158,7 @@ function run() {
     badLine = err.line; reveal(err.line);
   } else { status.textContent = 'Program terminat cu succes.'; badLine = 0 }
   showStep(steps.length - 1);
+  if (mSrc === CAIET) mLoad(CAIET);
 }
 $('sFirst').addEventListener('click', () => showStep(0));
 $('sPrev').addEventListener('click', () => showStep(cur - 1));
@@ -216,6 +219,7 @@ function tabBtn(name: string) { return tabs.find(b => b.dataset.tab === name) }
 function tab(name: string) {
   panes.forEach(p => p.classList.toggle('on', p.dataset.pane === name));
   tabs.forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === name)));
+  if (name !== 'masina') mStop();
   // A pane that was hidden lost its scroll position; bring the interesting line back.
   if (name === 'cod' && (curLine || badLine)) { reveal(curLine || badLine); sync() }
 }
@@ -266,6 +270,111 @@ for (const k of KEYS) {
   b.addEventListener('click', () => { if (k.a) { code.focus(); k.a() } else snippet(k.t!); drawExplain() });
   keys.append(b);
 }
+// ---- Machine view: keyboard and screen, the processor, the buses and the memory, one bus trip at a time (src/masina.ts).
+const CAIET = -1; // the program in the editor, instead of one of MASINI
+const mProg = $('mProg'), mData = $('mData'), mKeys = $('mKeys'), mScreen = $('mScreen'), mSay = $('mSay'), mCpu = $('mCpu');
+const mRange = $<HTMLInputElement>('mRange'), mPlay = $<HTMLButtonElement>('mPlay');
+const lanes = { adr: $('lAdr'), cmd: $('lCmd'), dat: $('lDat'), io: $('lIo') };
+let mSrc = 0, mm: Masina = masina(MASINI[0].code, MASINI[0].inp), mCur = 0, mInp: string[] = [], mTimer = 0;
+const mPicks = [...MASINI.map(m => m.name), 'Programul din caiet'].map((name, k) => {
+  const b = el('button', 'pbtn', name); b.type = 'button';
+  b.addEventListener('click', () => mLoad(k < MASINI.length ? k : CAIET));
+  $('mPick').append(b); return b;
+});
+function mLoad(k: number) {
+  mStop(); mSrc = k;
+  const p = k === CAIET ? { code: code.value, inp: inp.value } : MASINI[k];
+  mm = masina(p.code, p.inp); mInp = p.inp.split(/\s+/).filter(Boolean);
+  mPicks.forEach((b, i) => b.setAttribute('aria-pressed', String(i === (k === CAIET ? MASINI.length : k))));
+  mProg.innerHTML = '';
+  mm.lines.forEach((l, i) => { if (i < mm.lines.length - 1 || l) { const d = el('div'); d.innerHTML = '<i>' + (i + 1) + '</i><span>' + paint(l) + '</span>'; mProg.append(d) } });
+  mShow(0);
+}
+/** Sends a packet along a bus: `back` = towards the left (to the processor, or from it to the screen), `late` = after the request. */
+function packet(lane: HTMLElement, text: string | undefined, back = false, late = false) {
+  const pk = lane.querySelector<HTMLElement>('.pk')!;
+  lane.classList.toggle('on', text !== undefined);
+  pk.className = 'pk';
+  if (text === undefined) return;
+  pk.textContent = text; pk.title = text;
+  void pk.offsetWidth; // restart the animation
+  pk.classList.add('go'); if (back) pk.classList.add('back'); if (late) pk.classList.add('late');
+}
+function cell(c: Cadru, m: Cadru['mem'][number], freed: boolean): HTMLElement {
+  const d = el('div', 'mcell');
+  d.append(el('small', '', m.adr), el('span', 'dname', m.name), el('b', '', freed ? 'eliberată' : m.val));
+  if (freed) d.classList.add('free', 'w');
+  else {
+    if (m.gol) d.classList.add('gol');
+    if (c.cell === m.slot) d.classList.add(c.fel === 'read' ? 'r' : 'w');
+  }
+  return d;
+}
+function mShow(i: number) {
+  const n = mm.cadre.length;
+  mCur = Math.max(0, Math.min(i, n - 1));
+  const c = mm.cadre[mCur] as Cadru | undefined;
+  mRange.max = String(Math.max(0, n - 1)); mRange.value = String(mCur); mRange.disabled = n < 2;
+  $<HTMLButtonElement>('mFirst').disabled = $<HTMLButtonElement>('mPrev').disabled = mCur <= 0;
+  $<HTMLButtonElement>('mNext').disabled = $<HTMLButtonElement>('mLast').disabled = mPlay.disabled = mCur >= n - 1;
+  $('mNum').textContent = n ? 'Pasul ' + (mCur + 1) + ' din ' + n : '';
+  packet(lanes.adr, c?.adr); packet(lanes.cmd, c?.cmd);
+  packet(lanes.dat, c?.date, c?.spre === 'cpu', c?.spre === 'cpu' && c.fel !== 'write');
+  packet(lanes.io, c?.ioText, c?.io === 'out');
+  if (!c) {
+    const e = mm.err!;
+    mSay.textContent = 'Programul are o greșeală la linia ' + e.line + ': ' + e.message + ' Repar-o în caiet, apoi rulează din nou.';
+    for (const id of ['mLine', 'mInstr', 'mReg', 'mUal']) $(id).textContent = '';
+    mData.innerHTML = ''; mScreen.textContent = ''; mKeys.innerHTML = ''; return;
+  }
+  // The processor
+  $('mLine').textContent = c.line ? String(c.line) : '—';
+  $('mInstr').textContent = c.instr; $('mInstr').title = c.instr;
+  $('mReg').textContent = c.reg;
+  let ual = ''; for (let j = mCur; j >= 0 && !ual; j--) ual = mm.cadre[j].ual || '';
+  $('mUal').textContent = ual;
+  mCpu.classList.toggle('alu', c.fel === 'alu');
+  $('mRegBox').classList.toggle('on', mCur > 0 && c.reg !== mm.cadre[mCur - 1].reg);
+  // The memory: the program, then the boxes by address
+  [...mProg.children].forEach((d, k) => { d.classList.toggle('cur', k + 1 === c.line); d.classList.toggle('r', k + 1 === c.line && c.fel === 'fetch') });
+  const at = mProg.children[c.line - 1] as HTMLElement | undefined;
+  if (at && (at.offsetTop < mProg.scrollTop || at.offsetTop + at.offsetHeight > mProg.scrollTop + mProg.clientHeight)) mProg.scrollTop = at.offsetTop - mProg.clientHeight / 2;
+  mData.innerHTML = '';
+  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)].sort((a, b) => a[0].slot - b[0].slot);
+  for (const [m, f] of all) mData.append(cell(c, m, f));
+  if (!all.length) mData.append(el('p', 'none', 'Nicio cutie folosită încă.'));
+  // Keyboard and screen
+  mKeys.innerHTML = '';
+  mInp.forEach((t, k) => mKeys.append(el('i', k === c.cin - 1 && c.fel === 'in' ? 'now' : k < c.cin ? 'used' : '', t)));
+  if (!mInp.length) mKeys.append(el('em', '', 'Nimic de citit.'));
+  mScreen.textContent = mm.out.slice(0, c.out); mScreen.scrollTop = mScreen.scrollHeight;
+  mSay.textContent = c.say;
+  mSay.classList.toggle('bad', c.fel === 'end' && !!mm.err);
+}
+function mStop() {
+  if (!mTimer) return;
+  clearInterval(mTimer); mTimer = 0; mPlay.textContent = '⏵'; mPlay.title = 'Pornește'; mPlay.setAttribute('aria-label', 'Pornește');
+}
+mPlay.addEventListener('click', () => {
+  if (mTimer) { mStop(); return }
+  mPlay.textContent = '⏸'; mPlay.title = 'Oprește'; mPlay.setAttribute('aria-label', 'Oprește');
+  mTimer = setInterval(() => { mShow(mCur + 1); if (mCur >= mm.cadre.length - 1) mStop() }, 1700);
+  mShow(mCur + 1);
+});
+$('mFirst').addEventListener('click', () => { mStop(); mShow(0) });
+$('mPrev').addEventListener('click', () => { mStop(); mShow(mCur - 1) });
+$('mNext').addEventListener('click', () => { mStop(); mShow(mCur + 1) });
+$('mLast').addEventListener('click', () => { mStop(); mShow(mm.cadre.length - 1) });
+mRange.addEventListener('input', () => { mStop(); mShow(+mRange.value) });
+/** Opens the machine view on a program and brings it into sight. */
+function toMachine(k: number) {
+  mLoad(k);
+  if (MOBILE.matches) tab('masina'); else $('masina').scrollIntoView({ behavior: 'smooth' });
+}
+$('sMach').addEventListener('click', () => toMachine(CAIET));
+$('iMach').addEventListener('click', () => toMachine(0));
+mLoad(0);
+
 // ---- Intro: what the processor and the memory are, a step-by-step demo of boxes and assignments, a short quiz.
 const intro = $('intro'), iShow = $('iShow'), dCode = $('dCode'), dCpu = $('dCpu'), dMem = $('dMem'), dSay = $('dSay'), dNum = $('dNum');
 let demo = 0, dStep = 0;

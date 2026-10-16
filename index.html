@@ -37,6 +37,7 @@
         <h3>Procesorul</h3>
         <p>Este „creierul” calculatorului. Citește programul tău linie cu linie și face exact ce scrie acolo, de miliarde de ori pe secundă.</p>
         <p>Nu ghicește nimic: face doar ce îi spui. Poate să calculeze, dar nu ține minte numerele. Ce vrea să păstreze, pune în memorie.</p>
+        <p><button type="button" class="link" id="iMach">Vezi cum vorbește cu memoria →</button></p>
       </div>
       <div class="icard">
         <div class="ipic ram" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i></div>
@@ -139,7 +140,7 @@
         </div>
       </div>
       <div class="panel" data-pane="pasi">
-        <div class="label">Stiva: variabilele din memorie</div>
+        <div class="label"><span>Stiva: variabilele din memorie</span><button type="button" class="link" id="sMach">Vezi magistralele</button></div>
         <div class="stackbox">
           <div class="stepbar">
             <button type="button" id="sFirst" aria-label="De la început" title="De la început">|◀</button>
@@ -155,6 +156,58 @@
       </div>
     </div>
   </div>
+
+  <section class="masina" data-pane="masina" id="masina" aria-labelledby="mT">
+    <h2 id="mT">Pe dinăuntru: procesorul, memoria și magistralele</h2>
+    <p class="msub">Procesorul și memoria sunt legate prin fire numite <b>magistrale</b>. Pe <b>magistrala de adrese</b> procesorul spune ce cutie vrea, pe <b>magistrala de comandă</b> spune dacă o citește sau scrie în ea, iar pe <b>magistrala de date</b> circulă numărul. Alege un program și urmărește drumul fiecărui număr.</p>
+    <div class="dpick" id="mPick" role="group" aria-label="Alege programul"></div>
+    <div class="mach">
+      <div class="mdev">
+        <div class="mpart">
+          <h3>Tastatura <small>(cin)</small></h3>
+          <div class="mkeys" id="mKeys"></div>
+        </div>
+        <div class="mpart">
+          <h3>Ecranul <small>(cout)</small></h3>
+          <pre class="mscreen" id="mScreen"></pre>
+        </div>
+      </div>
+      <div class="mlanes mio">
+        <div class="lane two" id="lIo"><span>date</span><div class="track"><b class="pk"></b></div></div>
+      </div>
+      <div class="mcpu" id="mCpu">
+        <h3>Procesorul <small>(CPU)</small></h3>
+        <dl>
+          <div><dt>Linia</dt><dd id="mLine"></dd></div>
+          <div><dt>Instrucțiunea</dt><dd id="mInstr"></dd></div>
+          <div id="mRegBox"><dt>Registru <small>(un număr ținut în procesor)</small></dt><dd id="mReg"></dd></div>
+          <div id="mUalBox"><dt>UAL <small>(unitatea care calculează)</small></dt><dd id="mUal"></dd></div>
+        </dl>
+      </div>
+      <div class="mlanes mbus" aria-label="Magistralele">
+        <div class="lane one adr" id="lAdr"><span>adrese</span><div class="track"><b class="pk"></b></div></div>
+        <div class="lane one cmd" id="lCmd"><span>comandă</span><div class="track"><b class="pk"></b></div></div>
+        <div class="lane two dat" id="lDat"><span>date</span><div class="track"><b class="pk"></b></div></div>
+      </div>
+      <div class="mram">
+        <h3>Memoria <small>(RAM)</small></h3>
+        <div class="mlab">Programul</div>
+        <div class="mprog" id="mProg"></div>
+        <div class="mlab">Datele: cutiile variabilelor</div>
+        <div class="mdata" id="mData"></div>
+      </div>
+    </div>
+    <p class="dsay" id="mSay" aria-live="polite"></p>
+    <div class="stepbar">
+      <button type="button" id="mFirst" aria-label="De la început" title="De la început">|◀</button>
+      <button type="button" id="mPrev" aria-label="Pasul dinainte" title="Pasul dinainte">◀</button>
+      <button type="button" id="mPlay" class="mplay" aria-label="Pornește" title="Pornește">⏵</button>
+      <button type="button" id="mNext" aria-label="Pasul următor" title="Pasul următor">▶</button>
+      <button type="button" id="mLast" aria-label="La sfârșit" title="La sfârșit">▶|</button>
+      <input type="range" id="mRange" min="0" max="0" value="0" aria-label="Pasul curent">
+      <span id="mNum"></span>
+    </div>
+  </section>
 
   <section class="probs" data-pane="probleme" id="probs">
     <div class="plist">
@@ -190,6 +243,7 @@
     <button type="button" data-tab="cod"><span aria-hidden="true">{ }</span>Cod</button>
     <button type="button" data-tab="rulare"><span aria-hidden="true">▶</span>Rulare</button>
     <button type="button" data-tab="pasi"><span aria-hidden="true">⇥</span>Pași</button>
+    <button type="button" data-tab="masina"><span aria-hidden="true">⚙</span>CPU</button>
     <button type="button" data-tab="probleme"><span aria-hidden="true">≡</span>Probleme</button>
     <button type="button" data-tab="ajutor"><span aria-hidden="true">?</span>Ajutor</button>
   </nav>

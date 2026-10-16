@@ -1,6 +1,6 @@
 // Interpreter for the C++ subset: lexer -> closures. No DOM. Exposes compile(src).run(input).
 
-const LIMIT = 20000000, OUTMAX = 200000, INTMAX = 2147483647, TMAX = 2000;
+const LIMIT = 20000000, OUTMAX = 200000, INTMAX = 2147483647, TMAX = 2000, BMAX = 1500;
 
 export type ErrorKind = 'compile' | 'run';
 /**
@@ -9,8 +9,30 @@ export type ErrorKind = 'compile' | 'run';
  */
 export type VarView = [name: string, value: number | undefined, global: boolean, to?: string];
 export interface Snapshot { line: number; vars: VarView[]; out: number }
-export interface RunResult { out: string; steps: number; trace: Snapshot[]; end: Snapshot; cut: boolean }
+/**
+ * What the processor does, for the machine view (only recorded by compile(src, { bus: true })). `slot` is a box in memory;
+ * a pointer's value is its target slot + 1 (0 = nullptr). `fetch` brings a line of the program from memory, `decl` makes a box,
+ * `read`/`write` go to a box over the buses, `alu` is a calculation inside the processor (`y` missing for -x and !x;
+ * `ptr` when it compares addresses), `in` takes a number from the keyboard (cin), `out` sends text to the screen (cout),
+ * `free` lets go of the boxes of a block at its `}`.
+ */
+export type BusEvent =
+  | { k: 'fetch'; line: number }
+  | { k: 'decl'; slot: number }
+  | { k: 'read' | 'write'; slot: number; v: number }
+  | { k: 'alu'; op: string; x: number; y?: number; r: number; ptr?: boolean }
+  | { k: 'in'; v: number }
+  | { k: 'out'; s: string }
+  | { k: 'free'; slots: number[] };
+/** A box in memory as the machine view draws it: slot, name, value (undefined = empty), is it a pointer. */
+export type Box = [slot: number, name: string, value: number | undefined, ptr: boolean];
+/** One bus event with the memory right after it, how much was printed and the line being run. */
+export interface BusStep { e: BusEvent; mem: Box[]; out: number; line: number }
+export interface RunResult { out: string; steps: number; trace: Snapshot[]; end: Snapshot; cut: boolean; bus: BusStep[]; busCut: boolean }
 export interface Program { run(input?: string): RunResult }
+export interface Options { /** record what the processor does over the buses (slower; for the machine view) */ bus?: boolean }
+/** How cout shows a pointer: 0 for nullptr, else a made-up address, 4 bytes (one int) per box, like 0x1000. */
+export const adresa = (x: number) => x === 0 ? '0' : '0x' + (0x1000 + 4 * (x - 1)).toString(16);
 
 export class CppError extends Error {
   readonly isCpp = true;
@@ -18,6 +40,7 @@ export class CppError extends Error {
   trace?: Snapshot[];
   end?: Snapshot;
   cut?: boolean;
+  bus?: BusStep[];
   constructor(message: string, readonly line: number, readonly kind: ErrorKind = 'compile') {
     super(message);
     this.name = 'CppError';
@@ -98,11 +121,30 @@ type Expr = (() => number) & { at?: () => number; vname?: string; ptr?: boolean 
 type Flow = 0 | 1 | 2 | 3;
 type Stmt = () => Flow;
 
-export function compile(src: string): Program {
+export function compile(src: string, opt: Options = {}): Program {
   const { toks, inc } = lex(src);
   let p = 0, nslots = 0, loops = 0, usingStd = false, steps = 0, outLen = 0, input = '', ip = 0;
   let mem: (number | undefined)[] = [], out: string[] = [], live: number[] = [], trace: Snapshot[] = [];
   const names: string[] = [], gl: boolean[] = [], isPtr: boolean[] = [];
+  // The bus recorder. B is fixed at compile time, so a normal run builds the same closures as before and pays nothing.
+  const B = !!opt.bus;
+  let bus: BusStep[] = [], busCut = false, busLine = 0;
+  function ev(e: BusEvent) {
+    if (bus.length >= BMAX) { busCut = true; return }
+    bus.push({ e, mem: live.map(s => [s, names[s], mem[s], !!isPtr[s]]), out: outLen, line: busLine });
+  }
+  /** The processor brings a line of the program from memory (once, even if the line has several parts). */
+  function fetch(line: number) {
+    if (!B) return;
+    const l = bus.at(-1)?.e;
+    if (l && l.k === 'fetch' && l.line === line) return;
+    busLine = line; ev({ k: 'fetch', line });
+  }
+  /** Takes the boxes above height L off the stack (at a block's `}`). */
+  function drop(L: number) {
+    if (B && live.length > L) { const slots = live.slice(L).reverse(); live.length = L; ev({ k: 'free', slots }) }
+    live.length = L;
+  }
   function snap(line: number): Snapshot {
     const v: VarView[] = [];
     for (const s of live) {
@@ -159,7 +201,11 @@ export function compile(src: string): Program {
       if (isOp('(')) throw E('Funcțiile nu sunt disponibile în acest caiet.', t.line);
       const s = lookup(t.v), name = t.v, line = t.line;
       if (s === undefined) throw E('Variabila „' + name + '” nu a fost declarată. Scrie mai întâi: int ' + name + ';', line);
-      const f: Expr = () => {
+      const f: Expr = B ? () => {
+        const x = mem[s];
+        if (x === undefined) throw E('Variabila „' + name + '” este folosită înainte să primească o valoare.', line, 'run');
+        ev({ k: 'read', slot: s, v: x }); return x;
+      } : () => {
         const x = mem[s];
         if (x === undefined) throw E('Variabila „' + name + '” este folosită înainte să primească o valoare.', line, 'run');
         return x;
@@ -191,6 +237,7 @@ export function compile(src: string): Program {
     const f: Expr = () => {
       const s = at(), x = mem[s];
       if (x === undefined) throw E('Variabila „' + names[s] + '” (spre care arată ' + who + ') este folosită înainte să primească o valoare.', line, 'run');
+      if (B) ev({ k: 'read', slot: s, v: x });
       return x;
     };
     f.at = at; f.vname = '*' + (a.vname || ''); f.ptr = false; return f;
@@ -199,15 +246,16 @@ export function compile(src: string): Program {
     const a = primary();
     if (isOp('++', '--')) {
       const t = next(), at = needVar(a, t), d = t.v === '++' ? 1 : -1;
+      if (B) return () => { const x = a(), r = (x + d) | 0, s = at(); ev({ k: 'alu', op: d > 0 ? '+' : '-', x, y: 1, r }); mem[s] = r; ev({ k: 'write', slot: s, v: r }); return x };
       return () => { const x = a(); mem[at()] = (x + d) | 0; return x };
     }
     if (isOp('&')) throw E('Semnul & se pune în fața unei variabile, ca să îi iei adresa: &a. Pentru „și” folosește &&.', peek().line);
     return a;
   }
   function unary(): Expr {
-    if (isOp('-')) { const t = next(), a = unary(); noPtr(a, t); return () => (-a()) | 0 }
+    if (isOp('-')) { const t = next(), a = unary(); noPtr(a, t); return B ? () => { const x = a(), r = (-x) | 0; ev({ k: 'alu', op: '-', x, r }); return r } : () => (-a()) | 0 }
     if (isOp('+')) { const t = next(), a = unary(); noPtr(a, t); return a }
-    if (isOp('!')) { next(); const a = unary(); return () => a() === 0 ? 1 : 0 }
+    if (isOp('!')) { next(); const a = unary(); return B ? () => { const x = a(), r = x === 0 ? 1 : 0; ev({ k: 'alu', op: '!', x, r }); return r } : () => a() === 0 ? 1 : 0 }
     if (isOp('*')) { const t = next(); return deref(t, unary()) }
     if (isOp('&')) {
       const t = next(), a = unary();
@@ -217,6 +265,7 @@ export function compile(src: string): Program {
     }
     if (isOp('++', '--')) {
       const t = next(), a = unary(), at = needVar(a, t), d = t.v === '++' ? 1 : -1;
+      if (B) return () => { const v = a(), x = (v + d) | 0, s = at(); ev({ k: 'alu', op: d > 0 ? '+' : '-', x: v, y: 1, r: x }); mem[s] = x; ev({ k: 'write', slot: s, v: x }); return x };
       return () => { const x = (a() + d) | 0; return (mem[at()] = x) };
     }
     return postfix();
@@ -231,11 +280,32 @@ export function compile(src: string): Program {
     }
     throw new Error('unknown operator ' + o);
   }
+  function calc(o: string, line: number, x: number, y: number): number {
+    switch (o) {
+      case '==': return x === y ? 1 : 0;
+      case '!=': return x !== y ? 1 : 0;
+      case '<': return x < y ? 1 : 0;
+      case '<=': return x <= y ? 1 : 0;
+      case '>': return x > y ? 1 : 0;
+      case '>=': return x >= y ? 1 : 0;
+    }
+    return arith(o, line, x, y);
+  }
   function mk(t: Tok, a: Expr, b: Expr): Expr {
     const o = t.v, line = t.line;
     if (o === '==' || o === '!=') {
       if (!!a.ptr !== !!b.ptr) throw E('Un pointer se poate compara doar cu alt pointer sau cu nullptr.', line);
     } else if (o !== '||' && o !== '&&') { noPtr(a, t); noPtr(b, t) }
+    if (B) {
+      const ptr = !!a.ptr || undefined;
+      if (o === '||' || o === '&&') return () => {
+        const x = a();
+        // Short circuit: the right side is not even looked at.
+        if ((x !== 0) === (o === '||')) { const r = o === '||' ? 1 : 0; ev({ k: 'alu', op: o, x, r }); return r }
+        const y = b(), r = y !== 0 ? 1 : 0; ev({ k: 'alu', op: o, x, y, r }); return r;
+      };
+      return () => { const x = a(), y = b(), r = calc(o, line, x, y); ev({ k: 'alu', op: o, x, y, r, ptr }); return r };
+    }
     switch (o) {
       case '||': return () => (a() !== 0 || b() !== 0) ? 1 : 0;
       case '&&': return () => (a() !== 0 && b() !== 0) ? 1 : 0;
@@ -268,9 +338,14 @@ export function compile(src: string): Program {
       const t = next();
       if (!a.at) throw E('În stânga lui „' + t.v + '” trebuie să fie o variabilă.', t.line);
       const b = expr(), at = a.at, line = t.line;
-      if (t.v === '=') { fits(!!a.ptr, a.vname || '', b, line); const f: Expr = () => { const v = b(); return (mem[at()] = v) }; f.ptr = a.ptr; return f }
+      if (t.v === '=') {
+        fits(!!a.ptr, a.vname || '', b, line);
+        const f: Expr = B ? () => { const v = b(), s = at(); mem[s] = v; ev({ k: 'write', slot: s, v }); return v } : () => { const v = b(); return (mem[at()] = v) };
+        f.ptr = a.ptr; return f;
+      }
       noPtr(a, t); noPtr(b, t);
       const o = t.v[0];
+      if (B) return () => { const x = a(), y = b(), r = arith(o, line, x, y), s = at(); ev({ k: 'alu', op: o, x, y, r }); mem[s] = r; ev({ k: 'write', slot: s, v: r }); return r };
       return () => { const x = a(); return (mem[at()] = arith(o, line, x, b())) };
     }
     return a;
@@ -291,6 +366,15 @@ export function compile(src: string): Program {
     } while (isOp(',') && next());
     if (isOp('(')) throw E('Funcțiile proprii nu sunt disponibile în acest caiet. Scrie tot programul în main.', peek().line);
     expect(';');
+    if (B) return () => {
+      if (!global) { tick(line); fetch(line) }
+      // The box exists first, then it gets its first value.
+      for (const [s, init] of parts) {
+        mem[s] = global && !init ? 0 : undefined; live.push(s); ev({ k: 'decl', slot: s });
+        if (init) { const v = init(); mem[s] = v; ev({ k: 'write', slot: s, v }) }
+      }
+      return 0;
+    };
     return () => {
       if (!global) tick(line);
       for (const [s, init] of parts) { mem[s] = init ? init() : (global ? 0 : undefined); live.push(s) }
@@ -304,17 +388,18 @@ export function compile(src: string): Program {
       if (peek().t === 'eof') throw E('Lipsește o acoladă de închidere „}”.', toks[p - 1].line);
       list.push(stmt());
     }
-    next(); scopes.pop();
+    const end = next().line; scopes.pop();
     const n = list.length;
     return () => {
       const L = live.length; let r: Flow = 0;
       for (let i = 0; i < n; i++) { r = list[i](); if (r) break }
-      live.length = L; return r;
+      if (B && live.length > L) busLine = end;
+      drop(L); return r;
     };
   }
   function body(): Stmt {
     scopes.push(new Map()); const s = stmt(); scopes.pop();
-    return () => { const L = live.length, r = s(); live.length = L; return r };
+    return () => { const L = live.length, r = s(); drop(L); return r };
   }
   function cond(): Expr { expect('('); const c = expr(); expect(')'); return c }
   function stmt(): Stmt {
@@ -328,20 +413,20 @@ export function compile(src: string): Program {
         case 'if': {
           next(); const c = cond(), a = body(); let b: Stmt | null = null;
           if (isId('else')) { next(); b = body() }
-          return () => { tick(line); return c() !== 0 ? a() : (b ? b() : 0) };
+          return () => { tick(line); fetch(line); return c() !== 0 ? a() : (b ? b() : 0) };
         }
         case 'else': throw E('Acest „else” nu are un „if” înaintea lui.', line);
         case 'while': {
           next(); const c = cond(); loops++; const b = body(); loops--;
           return () => {
-            while (c() !== 0) { tick(line); const r = b(); if (r === 1) break; if (r === 3) return 3 }
+            while ((fetch(line), c() !== 0)) { tick(line); const r = b(); if (r === 1) break; if (r === 3) return 3 }
             return 0;
           };
         }
         case 'do': {
-          next(); loops++; const b = body(); loops--; expectId('while'); const c = cond(); expect(';');
+          next(); loops++; const b = body(); loops--; const wl = expectId('while').line; const c = cond(); expect(';');
           return () => {
-            do { tick(line); const r = b(); if (r === 1) break; if (r === 3) return 3 } while (c() !== 0);
+            do { tick(line); fetch(line); const r = b(); if (r === 1) break; if (r === 3) return 3 } while ((fetch(wl), c() !== 0));
             return 0;
           };
         }
@@ -355,26 +440,26 @@ export function compile(src: string): Program {
           if (!isOp(')')) step = expr(); expect(')');
           loops++; const b = body(); loops--; scopes.pop();
           return () => {
-            const L = live.length; if (init) init();
-            while (!c || c() !== 0) {
+            const L = live.length; fetch(line); if (init) init();
+            while ((fetch(line), !c || c() !== 0)) {
               tick(line); const r = b();
               if (r === 1) break;
-              if (r === 3) { live.length = L; return 3 }
-              if (step) step();
+              if (r === 3) { drop(L); return 3 }
+              fetch(line); if (step) step();
             }
-            live.length = L; return 0;
+            drop(L); return 0;
           };
         }
         case 'break': case 'continue': {
           next();
           if (!loops) throw E('„' + t.v + '” se poate folosi doar în interiorul unei repetiții (while, for, do).', line);
           expect(';'); const r: Flow = t.v === 'break' ? 1 : 2;
-          return () => r;
+          return B ? () => { fetch(line); return r } : () => r;
         }
         case 'return': {
           next(); let e: Expr | null = null;
           if (!isOp(';')) e = expr(); expect(';');
-          return () => { tick(line); if (e) e(); return 3 };
+          return () => { tick(line); fetch(line); if (e) e(); return 3 };
         }
         case 'cin': {
           next(); needIO(t); const slots: number[] = [];
@@ -390,6 +475,7 @@ export function compile(src: string): Program {
           }
           if (isOp('<<')) throw E('La cin se folosește >> (nu <<).', line);
           expect(';');
+          if (B) return () => { tick(line); fetch(line); for (const s of slots) { const v = readInt(line); ev({ k: 'in', v }); mem[s] = v; ev({ k: 'write', slot: s, v }) } return 0 };
           return () => { tick(line); for (const s of slots) mem[s] = readInt(line); return 0 };
         }
         case 'cout': {
@@ -405,11 +491,11 @@ export function compile(src: string): Program {
           if (isOp('>>')) throw E('La cout se folosește << (nu >>).', line);
           expect(';');
           return () => {
-            tick(line);
+            tick(line); fetch(line);
             for (const f of items) {
               const s = f(); outLen += s.length;
               if (outLen > OUTMAX) throw E('Programul a afișat prea mult text. Poate ai o repetiție care nu se termină?', line, 'run');
-              out.push(s);
+              out.push(s); if (B) ev({ k: 'out', s });
             }
             return 0;
           };
@@ -417,10 +503,8 @@ export function compile(src: string): Program {
       }
     }
     const e = expr(); expect(';');
-    return () => { tick(line); e(); return 0 };
+    return () => { tick(line); fetch(line); e(); return 0 };
   }
-  /** How cout shows a pointer: 0 for nullptr, else a made-up address, 4 bytes (one int) per box, like 0x1000. */
-  const adresa = (x: number) => x === 0 ? '0' : '0x' + (0x1000 + 4 * (x - 1)).toString(16);
   function readInt(line: number): number {
     while (ip < input.length && /\s/.test(input[ip])) ip++;
     if (ip >= input.length) throw E('Programul vrea să citească un număr, dar datele de intrare s-au terminat. Scrie mai multe numere în caseta „Date de intrare”.', line, 'run');
@@ -453,15 +537,15 @@ export function compile(src: string): Program {
 
   return {
     run(inp?: string): RunResult {
-      mem = new Array(nslots); steps = 0; out = []; outLen = 0; input = String(inp || ''); ip = 0; live = []; trace = [];
+      mem = new Array(nslots); steps = 0; out = []; outLen = 0; input = String(inp || ''); ip = 0; live = []; trace = []; bus = []; busCut = false; busLine = 0;
       try {
         for (const g of globals) g();
         entry();
       } catch (e) {
-        if (e instanceof CppError) { e.out = out.join(''); e.trace = trace; e.end = snap(e.line); e.cut = steps > trace.length }
+        if (e instanceof CppError) { e.out = out.join(''); e.trace = trace; e.end = snap(e.line); e.cut = steps > trace.length; e.bus = bus }
         throw e;
       }
-      return { out: out.join(''), steps, trace, end: snap(0), cut: steps > trace.length };
+      return { out: out.join(''), steps, trace, end: snap(0), cut: steps > trace.length, bus, busCut };
     },
   };
 }
