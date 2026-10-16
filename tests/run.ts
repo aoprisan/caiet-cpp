@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { compile, CppError } from '../src/interp.js';
 import { explain } from '../src/explain.js';
 import { note, matches, same, verifica, blocuri, type Problema } from '../src/probleme.js';
+import { DEMOS, INTREBARI, memorie } from '../src/intro.js';
 
 const H = '#include <iostream>\nusing namespace std;\nint main(){\n', F = '\nreturn 0;}';
 const out = (body: string, inp?: string) => compile(H + body + F).run(inp || '').out;
@@ -74,5 +75,24 @@ t('probleme: search ignores diacritics, # finds by number', () => {
 });
 t('probleme: statement blocks', () => {
   assert.deepEqual(blocuri('Primul.\nRând nou.\n\n- a\n- b'), [{ p: 'Primul.\nRând nou.' }, { li: ['a', 'b'] }]);
+});
+const vars = (body: string) => compile(H + body + F).run('').trace.at(-1)!.vars.map(v => [v[0], v[1]]);
+t('intro: every demo line leaves memory as the interpreter does', () => {
+  for (const d of DEMOS) {
+    d.steps.forEach((s, i) => {
+      assert.ok(s.line >= 0 && s.line < d.lines.length, d.name);
+      if (i === 0) assert.equal(s.line, 0, d.name);
+      else assert.ok(s.line === d.steps[i - 1].line || s.line === d.steps[i - 1].line + 1, d.name + ': lines in order');
+      if (d.steps[i + 1]?.line === s.line) return;
+      assert.deepEqual(memorie(d, i + 1), vars(d.lines.slice(0, s.line + 1).join('\n')), d.name + ', line ' + (s.line + 1));
+    });
+    assert.equal(d.steps.at(-1)!.line, d.lines.length - 1, d.name + ' ends on its last line');
+  }
+});
+t('intro: quiz answers match the interpreter', () => {
+  for (const q of INTREBARI) {
+    const name = /în (\w+) la sfârșit/.exec(q.ask)![1];
+    assert.equal(String(q.options[q.ok]), out(q.code + '\ncout << ' + name + ';'), q.code);
+  }
 });
 console.log(n + ' tests passed');

@@ -1,6 +1,7 @@
-// Page wiring: editor, highlighting, run, step-through stack view, examples, pbinfo problems.
+// Page wiring: intro (processor and memory), editor, highlighting, run, step-through stack view, examples, pbinfo problems.
 import { compile, CppError, type RunResult, type Snapshot } from './interp.js';
 import { explain } from './explain.js';
+import { DEMOS, INTREBARI, memorie } from './intro.js';
 import { CAPITOLE, DIFICULTATI, blocuri, matches, note, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -9,6 +10,12 @@ const status = $('status'), ex = $<HTMLSelectElement>('ex');
 
 const H = '#include <iostream>\nusing namespace std;\n\nint main() {\n', F = '    return 0;\n}\n';
 const EX: { name: string; inp: string; code: string }[] = [
+  // The intro's programs come first, with a cout at the end so they show something.
+  ...DEMOS.map(d => ({
+    name: d.name, inp: '',
+    code: H + d.lines.map(l => '    ' + l + '\n').join('')
+      + '    cout << ' + memorie(d, d.steps.length).map(v => '"' + v[0] + ' = " << ' + v[0]).join(' << ", " << ') + ' << endl;\n' + F,
+  })),
   { name: 'Suma a două numere', inp: '12 30', code: H + '    int a, b;\n    cin >> a >> b;\n    cout << "Suma este " << a + b << endl;\n' + F },
   { name: 'Maximul dintre trei numere', inp: '7 19 4', code: H + '    int a, b, c, maxim;\n    cin >> a >> b >> c;\n    maxim = a;\n    if (b > maxim) {\n        maxim = b;\n    }\n    if (c > maxim) {\n        maxim = c;\n    }\n    cout << "Cel mai mare: " << maxim << endl;\n' + F },
   { name: 'Suma cifrelor', inp: '2026', code: H + '    int n, suma = 0;\n    cin >> n;\n    while (n > 0) {\n        suma = suma + n % 10;   // ultima cifră\n        n = n / 10;             // tăiem ultima cifră\n    }\n    cout << suma << endl;\n' + F },
@@ -258,7 +265,77 @@ for (const k of KEYS) {
   b.addEventListener('click', () => { if (k.a) { code.focus(); k.a() } else snippet(k.t!); drawExplain() });
   keys.append(b);
 }
-tab('cod'); fit();
+// ---- Intro: what the processor and the memory are, a step-by-step demo of boxes and assignments, a short quiz.
+const intro = $('intro'), iShow = $('iShow'), dCode = $('dCode'), dCpu = $('dCpu'), dMem = $('dMem'), dSay = $('dSay'), dNum = $('dNum');
+let demo = 0, dStep = 0;
+/** On a computer the intro sits above the editor until it is hidden; on a phone it is the first tab. */
+function drawIntro() {
+  const off = !!store.get('caiet.intro');
+  intro.hidden = off && !MOBILE.matches; iShow.hidden = !off;
+}
+function showDemo(i: number) {
+  const d = DEMOS[demo], n = d.steps.length;
+  dStep = Math.max(0, Math.min(n, i));
+  const s = d.steps[dStep - 1], mem = memorie(d, dStep);
+  dCode.innerHTML = d.lines.map((l, k) => '<div' + (s?.line === k ? ' class="cur"' : '') + '>' + paint(l) + '</div>').join('');
+  dCpu.textContent = s?.cpu ?? '';
+  dMem.innerHTML = '';
+  for (let k = 0; k < 4; k++) {
+    const v = mem[k], box = el('div', 'dbox');
+    box.append(el('small', '', 'cutia ' + (k + 1)));
+    if (!v) { box.classList.add('free'); box.append(el('span', '', 'liberă')) }
+    else {
+      box.append(el('span', 'dname', v[0]), el('b', '', v[1] === undefined ? 'goală' : String(v[1])));
+      if (v[1] === undefined) box.classList.add('empty');
+      if (s?.read?.includes(v[0])) box.classList.add('r');
+      if (s?.decl === v[0] || s?.set?.[0] === v[0]) box.classList.add('w');
+    }
+    dMem.append(box);
+  }
+  dSay.textContent = s ? s.say : 'Memoria e goală. Apasă ▶ ca procesorul să citească prima linie.';
+  dNum.textContent = 'Pasul ' + dStep + ' din ' + n;
+  $<HTMLButtonElement>('dFirst').disabled = $<HTMLButtonElement>('dPrev').disabled = dStep === 0;
+  $<HTMLButtonElement>('dNext').disabled = dStep === n;
+  dPick.forEach((b, k) => b.setAttribute('aria-pressed', String(k === demo)));
+}
+const dPick = DEMOS.map((d, k) => {
+  const b = el('button', 'pbtn', d.name); b.type = 'button';
+  b.addEventListener('click', () => { demo = k; showDemo(0) });
+  $('dPick').append(b); return b;
+});
+$('dFirst').addEventListener('click', () => showDemo(0));
+$('dPrev').addEventListener('click', () => showDemo(dStep - 1));
+$('dNext').addEventListener('click', () => showDemo(dStep + 1));
+$('dOpen').addEventListener('click', () => {
+  ex.value = String(demo); load(ex.value); run(); showStep(0);
+  if (MOBILE.matches) tab('pasi'); else $('code').closest('.grid')!.scrollIntoView({ behavior: 'smooth' });
+});
+INTREBARI.forEach((q, k) => {
+  const box = el('div', 'qitem'), pre = el('pre'), row = el('div', 'qopts'), why = el('p', 'qwhy');
+  pre.innerHTML = paint(q.code); why.hidden = true;
+  box.append(el('p', 'qask', (k + 1) + '. ' + q.ask), pre, row, why);
+  q.options.forEach((o, j) => {
+    const b = el('button', 'pbtn', String(o)); b.type = 'button';
+    b.addEventListener('click', () => {
+      row.querySelectorAll('button').forEach(x => x.classList.remove('yes', 'no'));
+      b.classList.add(j === q.ok ? 'yes' : 'no');
+      why.hidden = false; why.className = 'qwhy ' + (j === q.ok ? 'yes' : 'no');
+      why.textContent = j === q.ok ? 'Corect! ' + q.why : 'Nu chiar. Urmărește cutiile linie cu linie și încearcă din nou.';
+    });
+    row.append(b);
+  });
+  $('quiz').append(box);
+});
+function closeIntro() {
+  store.set('caiet.intro', 'citit'); drawIntro();
+  if (MOBILE.matches) tab('cod'); else window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('iHide').addEventListener('click', closeIntro);
+$('iGo').addEventListener('click', closeIntro);
+iShow.addEventListener('click', () => { store.set('caiet.intro', ''); drawIntro(); intro.scrollIntoView({ behavior: 'smooth' }) });
+MOBILE.addEventListener('change', drawIntro);
+drawIntro(); showDemo(0);
+tab(store.get('caiet.intro') ? 'cod' : 'start'); fit();
 
 // ---- Problems from pbinfo (probleme/probleme.json, built by tools/probleme.mjs): list, statement, check on the examples.
 let probs: Problema[] = [], sel: Problema | undefined;

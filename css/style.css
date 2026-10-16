@@ -92,6 +92,64 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .help dd{margin:0; font:400 .9rem/1.6 var(--mono); color:var(--muted); overflow-wrap:anywhere}
 .help p{margin:14px 0 0; color:var(--muted); max-width:65ch}
 #status .goto{display:block; margin-top:8px; background:var(--paper); color:var(--err); border:1px solid currentColor; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer}
+/* Intro: processor and memory explained, a demo where boxes fill up step by step, a short quiz. */
+.intro{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:16px 18px; display:flex; flex-direction:column; gap:12px}
+.ihead{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 16px}
+.intro h2{font-family:var(--display); font-weight:800; font-size:1.5rem; line-height:1.15; margin:0}
+.intro h3{margin:0}
+.intro h3.isec{font-family:var(--display); font-weight:600; font-size:1.2rem; margin-top:8px}
+.intro p,.intro ol{margin:0}
+.intro code{font-family:var(--mono); font-size:.92em; background:var(--cur-bg); padding:0 4px; border-radius:4px; white-space:nowrap}
+.icards{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px}
+.icard{border:1px solid var(--line); border-radius:6px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; background:var(--bg)}
+.icard ol{padding-left:1.3em}
+.ipic{height:56px; display:flex; align-items:center; gap:6px; font-family:var(--mono)}
+.ipic.cpu span{width:56px; height:56px; display:grid; place-items:center; background:var(--ink); color:var(--paper); font-weight:600; border-radius:6px;
+  outline:3px dashed var(--muted); outline-offset:3px}
+.ipic.ram{display:grid; grid-template-columns:repeat(6,minmax(0,34px)); grid-template-rows:26px; height:auto; padding:15px 0}
+.ipic.ram i{font-style:normal; font-size:.75rem; color:var(--muted); border:2px solid var(--ink); border-radius:3px; display:grid; place-items:center; background:var(--paper)}
+.ipic.box span,.ipic.arrow span{font-weight:600; color:var(--hl-kw)}
+.ipic.box b,.ipic.arrow b{min-width:48px; height:44px; display:grid; place-items:center; border:2px solid var(--ink); border-radius:4px; background:var(--paper); font-size:1.2rem}
+.ipic.arrow em{font-style:normal; font-size:1.6rem; color:var(--accent)}
+.ipic.arrow span{min-width:48px; height:44px; display:grid; place-items:center; border:2px solid var(--ink); border-radius:4px; background:var(--paper)}
+.demo{border:1px solid var(--line); border-radius:6px; padding:12px 14px; display:flex; flex-direction:column; gap:10px}
+.dpick{display:flex; flex-wrap:wrap; gap:6px}
+.dpick button[aria-pressed="true"]{background:var(--accent); color:var(--accent-fg); border-color:var(--accent)}
+.dbody{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px 20px}
+.dcol{display:flex; flex-direction:column; gap:6px; min-width:0}
+.dlab{font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+#dCode{margin:0; padding:6px 0; font:400 16px/24px var(--mono); border:1px solid var(--line); border-radius:6px; overflow-x:auto}
+#dCode div{padding:0 10px; white-space:pre}
+#dCode div.cur{background:var(--cur-bg); box-shadow:inset 3px 0 0 var(--accent)}
+#dCode .kw{color:var(--hl-kw)} #dCode .num{color:var(--hl-num)} #dCode .io{color:var(--hl-io)}
+.dcpu{min-height:40px; padding:6px 12px; border-radius:6px; background:var(--ink); color:var(--paper); font:600 18px/28px var(--mono)}
+.dmem{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px}
+.dbox{border:2px solid var(--ink); border-radius:4px; padding:4px 6px; display:flex; flex-direction:column; align-items:center; min-height:84px;
+  font-family:var(--mono); transition:background .2s}
+.dbox small{font-family:var(--body); font-size:.72rem; color:var(--muted)}
+.dbox .dname{font-weight:600; color:var(--hl-kw)}
+.dbox b{font-size:1.25rem; font-variant-numeric:tabular-nums}
+.dbox.empty b{font-size:.85rem; font-weight:400; color:var(--muted); font-family:var(--body); margin-top:5px}
+.dbox.free{border-style:dashed; border-color:var(--line); color:var(--muted); justify-content:flex-start}
+.dbox.free span{font-family:var(--body); font-size:.85rem; margin-top:8px}
+.dbox.r{outline:3px solid var(--hl-io); outline-offset:1px}
+.dbox.w{background:var(--cur-bg); outline:3px solid var(--accent); outline-offset:1px}
+.dsay{min-height:3em; font-weight:600}
+.demo .stepbar{flex-wrap:wrap}
+.demo .stepbar button.link{font-family:var(--body)}
+#dNum{color:var(--muted); font-size:.92rem; margin-right:auto; margin-left:4px}
+.quiz{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px}
+.qitem{border:1px solid var(--line); border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:8px}
+.qask{font-weight:700}
+.qitem pre{margin:0; padding:6px 10px; font:400 15px/22px var(--mono); background:var(--bg); border-radius:4px; overflow-x:auto}
+.qitem pre .kw{color:var(--hl-kw)} .qitem pre .num{color:var(--hl-num)}
+.qopts{display:flex; gap:6px}
+.qopts button{min-width:52px; font-family:var(--mono)}
+.qopts button.yes,.qwhy.yes{background:var(--ok-bg); color:var(--ok); border-color:currentColor}
+.qopts button.no,.qwhy.no{background:var(--err-bg); color:var(--err); border-color:currentColor}
+.qwhy{padding:6px 10px; border-radius:6px; font-size:.95rem}
+.intro > .run{align-self:flex-start}
+
 /* Problems: list + statement side by side; the bar above the input checks the program on the examples. */
 .pbar{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:8px}
 .pbar-h{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 12px}
@@ -183,6 +241,13 @@ button.link{background:none; border:0; padding:0; color:var(--accent); font-weig
   .stepbar button{min-width:44px; min-height:44px}
   #sCode{margin:0; padding:6px 10px; font:400 16px/24px var(--mono); white-space:pre; overflow-x:auto; background:var(--cur-bg); border-radius:4px; color:var(--ink)}
   #sCode .ln{color:var(--muted); margin-right:10px}
+  .intro{margin-bottom:12px; padding:12px; gap:10px}
+  .intro h2{font-size:1.25rem}
+  #iHide{display:none}
+  .dbody{grid-template-columns:minmax(0,1fr)}
+  .dmem{gap:6px}
+  .demo .stepbar button:not(.link){min-width:44px; min-height:44px}
+  .qopts button{min-height:44px}
   .help{flex:1; margin-bottom:12px}
   .probs{display:block; padding:12px; margin-bottom:12px}
   .probs.open .plist, .probs:not(.open) #pView{display:none}
