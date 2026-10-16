@@ -61,7 +61,14 @@
         <div class="ipic stack" aria-hidden="true"><i>c</i><i>b</i><i>a</i><em>← vârf</em></div>
         <h3>Stiva</h3>
         <p>Cutiile variabilelor stau într-o parte a memoriei numită <b>stivă</b>. Ca la un teanc de farfurii: fiecare <code>int</code> nou pune o cutie <b>deasupra</b> celorlalte, în vârf.</p>
+        <p>O atribuire ca <code>a = 6;</code> nu pune o cutie nouă: schimbă numărul din cutia <b>a</b>, acolo unde stă ea pe stivă.</p>
         <p>La <code>}</code>, cutiile luate în blocul acela sunt scoase de sus: ultima pusă pleacă prima. Locul lor se refolosește. Panoul „Stiva” de lângă program îți arată asta la fiecare pas.</p>
+      </div>
+      <div class="icard">
+        <div class="ipic ptr" aria-hidden="true"><span>p</span><b>•</b><em>→</em><span>a</span><b>5</b></div>
+        <h3>Pointerul</h3>
+        <p>Numărul unei cutii se numește <b>adresă</b>. <code>&amp;a</code> înseamnă „adresa lui a”. Un pointer este o cutie în care pui o adresă: <code>int *p = &amp;a;</code> Spunem că <b>p arată spre a</b>.</p>
+        <p><code>*p</code> înseamnă „cutia spre care arată p”. Așa, <code>*p = 6;</code> pune 6 în a, fără să scrii a. Grijă: dacă a fost scoasă de pe stivă, p arată spre o cutie care nu mai există.</p>
       </div>
     </div>
 

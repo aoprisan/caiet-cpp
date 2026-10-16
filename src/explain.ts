@@ -44,6 +44,12 @@ function paren(s: string): [string, string] {
   }
   return [s.slice(1), ''];
 }
+/** What a pointer gets: `&a` or `nullptr`. */
+function ptrInit(v: string): string {
+  if (v === 'nullptr') return 'pornește cu nullptr: nu arată spre nicio cutie';
+  const a = /^&\s*(\w+)$/.exec(v);
+  return a ? 'pornește cu adresa lui ' + a[1] + ': arată spre cutia ' + a[1] : 'pornește cu ' + v;
+}
 function simple(st: string): string {
   st = st.trim(); let m: RegExpExecArray | null;
   if (!st) return '';
@@ -51,18 +57,22 @@ function simple(st: string): string {
   if (/^int\s+main\s*\(/.test(st)) return 'De aici începe programul. Instrucțiunile dintre acoladele lui main se execută pe rând, de sus în jos.';
   if (/^return\b/.test(st)) return 'Programul se încheie aici. Valoarea 0 înseamnă „totul a mers bine”.';
   if ((m = /^int\s+(.+)$/.exec(st))) {
-    const names: string[] = [], inits: string[] = [];
+    const names: string[] = [], ptrs: string[] = [], inits: string[] = [];
     for (const d of split(m[1], ',')) {
-      const k = /^\s*(\w+)\s*(?:=\s*(.+))?$/.exec(d);
+      const k = /^\s*(\*?)\s*(\w+)\s*(?:=\s*(.+))?$/.exec(d);
       if (!k) continue;
-      names.push(k[1]);
-      if (k[2]) inits.push(k[1] + ' pornește cu valoarea ' + k[2].trim());
+      (k[1] ? ptrs : names).push(k[2]);
+      if (k[3]) inits.push(k[1] ? k[2] + ' ' + ptrInit(k[3].trim()) : k[2] + ' pornește cu valoarea ' + k[3].trim());
     }
-    if (!names.length) return 'Creează variabile pentru numere întregi.';
-    return (names.length > 1
+    if (!names.length && !ptrs.length) return 'Creează variabile pentru numere întregi.';
+    const made: string[] = [];
+    if (names.length) made.push(names.length > 1
       ? 'Creează variabilele ' + names.join(', ') + ' (cutii în memorie, fiecare pentru un număr întreg).'
-      : 'Creează variabila ' + names[0] + ' (o cutie în memorie pentru un număr întreg).')
-      + (inits.length ? ' ' + inits.join('; ') + '.' : '');
+      : 'Creează variabila ' + names[0] + ' (o cutie în memorie pentru un număr întreg).');
+    if (ptrs.length) made.push(ptrs.length > 1
+      ? 'Creează pointerii ' + ptrs.join(', ') + ' (cutii care țin adresa altor cutii).'
+      : 'Creează pointerul ' + ptrs[0] + ' (o cutie care ține adresa altei cutii).');
+    return made.join(' ') + (inits.length ? ' ' + inits.join('; ') + '.' : '');
   }
   if (/^cin\b/.test(st)) {
     const v = split(st, '>>').slice(1).map(x => x.trim());
@@ -77,6 +87,8 @@ function simple(st: string): string {
       if (x[0] === "'") return x === "'\\n'" ? 'trece pe linie nouă' : x === "' '" ? 'un spațiu' : 'caracterul ' + x;
       if (x === 'endl') return 'trece pe linie nouă';
       if (/^\w+$/.test(x)) return /^\d+$/.test(x) ? 'numărul ' + x : 'valoarea lui ' + x;
+      if (/^\*\s*\w+$/.test(x)) return 'numărul din cutia spre care arată ' + x.slice(1).trim();
+      if (/^&\s*\w+$/.test(x)) return 'adresa lui ' + x.slice(1).trim();
       return 'rezultatul calculului ' + x;
     });
     return 'Afișează pe ecran: ' + parts.join(', apoi ') + '.';
@@ -95,6 +107,8 @@ function simple(st: string): string {
     };
     return says[m[2]];
   }
+  if ((m = /^(\w+)\s*=\s*(&\s*\w+|nullptr)$/.exec(st))) return m[1] + ' ' + ptrInit(m[2]).replace('pornește cu', 'primește') + '.';
+  if ((m = /^\*\s*(\w+)\s*=(?!=)\s*(.+)$/.exec(st))) return 'Calculează ' + m[2] + ' și pune rezultatul în cutia spre care arată ' + m[1] + ' (nu în ' + m[1] + ').';
   if ((m = /^(\w+)\s*=(?!=)\s*(.+)$/.exec(st))) return 'Calculează ' + m[2] + ' și pune rezultatul în ' + m[1] + '. Semnul = înseamnă „primește”, nu „este egal”.';
   return 'Calculează expresia ' + st + '.';
 }
@@ -128,6 +142,8 @@ export function explain(raw: string): string[] {
   if (t === '{') return ['Începe un bloc: un grup de instrucțiuni care merg împreună. Variabilele declarate în el se pun pe stivă și dispar la „}”.'];
   const code = strip(raw), list = parts(code), bare = code.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '');
   if (!list.length) list.push('Nu știu să explic linia aceasta.');
+  if (/(?:^|[=(,<>!&|+\-/%*])\s*\*\s*[A-Za-z_]/.test(bare)) list.push('Semnul * în fața unui pointer înseamnă „cutia spre care arată”: *p este cutia spre care arată p.');
+  if (/(?<!&)&(?!&)\s*[A-Za-z_]/.test(bare)) list.push('Semnul & în fața unei variabile înseamnă „adresa ei”: &a este numărul cutiei lui a.');
   if (bare.includes('%')) list.push('Semnul % dă restul împărțirii: 17 % 5 este 2.');
   if (bare.includes('/')) list.push('Semnul / dă câtul împărțirii întregi, fără rest: 17 / 5 este 3.');
   if (code.length < raw.trimEnd().length) list.push('Textul de după // este un comentariu, pe care calculatorul îl ignoră.');
