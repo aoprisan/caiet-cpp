@@ -32,10 +32,6 @@ export interface Cadru {
 }
 export interface Masina { cadre: Cadru[]; lines: string[]; out: string; err?: CppError; cut: boolean }
 
-/** The address of box `slot` (the same made-up address cout shows for a pointer to it). */
-export const adr = (slot: number) => adresa(slot + 1);
-const val = (v: number | undefined, ptr: boolean) => v === undefined ? 'goală' : ptr ? (v === 0 ? 'nullptr' : adresa(v)) : String(v);
-const celula = ([slot, name, v, ptr]: Box): Celula => ({ slot, adr: adr(slot), name, val: val(v, ptr), gol: v === undefined, ptr });
 const text = (s: string) => s === '\n' ? 'rând nou (endl)' : '„' + s + '”';
 const OP: Record<string, string> = { '/': ' (câtul)', '%': ' (restul)' };
 
@@ -53,9 +49,19 @@ export function masina(src: string, input: string): Masina {
   }
   const cadre: Cadru[] = [];
   let reg = '', cin = 0, prev: Box[] = [];
+  // Every box seen so far: a pointer can point to a box that already left the stack, and keeps showing its address.
+  const seen = new Map<number, Box>();
+  /** The address of box `slot`: the same made-up address cout shows for a pointer to it. */
+  const adr = (slot: number) => adresa(seen.get(slot)![4]);
+  const val = (v: number | undefined, ptr: boolean) => v === undefined ? 'goală' : ptr ? (v === 0 ? 'nullptr' : adr(v - 1)) : String(v);
+  const celula = ([slot, name, v, ptr]: Box): Celula => ({ slot, adr: adr(slot), name, val: val(v, ptr), gol: v === undefined, ptr });
   steps.forEach((st, i) => {
-    const e = st.e, mem = st.mem.map(celula), box = (s: number) => st.mem.find(b => b[0] === s) || prev.find(b => b[0] === s);
+    for (const b of st.mem) seen.set(b[0], b);
+    const e = st.e, mem = st.mem.map(celula), box = (s: number) => st.mem.find(b => b[0] === s) || seen.get(s);
+    const gone = (s: number) => !st.mem.some(b => b[0] === s);
     const name = (s: number) => box(s)?.[1] || '?';
+    /** The box a pointer points to; it may have left the stack already. */
+    const target = (s: number) => name(s) + (gone(s) ? ', care nu mai există' : '');
     const instr = (lines[st.line - 1] || '').trim();
     const c: Cadru = { fel: e.k, say: '', line: st.line, instr, reg, mem, freed: [], out: st.out, cin };
     switch (e.k) {
@@ -75,19 +81,19 @@ export function masina(src: string, input: string): Masina {
         const b = box(e.slot)!, v = val(e.v, b[3]);
         c.adr = adr(e.slot); c.cmd = 'citește'; c.date = v; c.spre = 'cpu'; c.cell = e.slot; c.reg = reg = v;
         c.say = 'Procesorul are nevoie de ' + b[1] + '. Trimite adresa ' + adr(e.slot) + ' și comanda „citește”. Memoria îi răspunde cu '
-          + v + (b[3] && e.v ? ', adresa cutiei ' + name(e.v - 1) : '') + '.';
+          + v + (b[3] && e.v ? ', adresa cutiei ' + target(e.v - 1) : '') + '.';
         break;
       }
       case 'write': {
         const b = box(e.slot)!, v = val(e.v, b[3]), old = prev.find(x => x[0] === e.slot)?.[2];
         c.adr = adr(e.slot); c.cmd = 'scrie'; c.date = v; c.spre = 'mem'; c.cell = e.slot; c.reg = reg = v;
         c.say = 'Procesorul pune ' + v + ' în ' + b[1] + ': trimite adresa ' + adr(e.slot) + ', comanda „scrie” și, pe magistrala de date, '
-          + (b[3] ? 'adresa ' + v + (e.v ? ' (a lui ' + name(e.v - 1) + ')' : '') : 'numărul ' + v) + '.'
+          + (b[3] ? 'adresa ' + v + (e.v ? ' (a lui ' + target(e.v - 1) + ')' : '') : 'numărul ' + v) + '.'
           + (old !== undefined && old !== e.v ? ' Ce era înainte în cutie, ' + val(old, b[3]) + ', se pierde.' : '');
         break;
       }
       case 'alu': {
-        const f = (x: number) => e.ptr ? adresa(x) : String(x);
+        const f = (x: number) => e.ptr ? val(x, true) : String(x);
         c.reg = reg = String(e.r);
         if (e.op === '-' && e.y === undefined) { c.ual = '-(' + e.x + ') = ' + e.r; c.say = 'Unitatea de calcul (UAL) din procesor schimbă semnul: ' + c.ual + '.'; break }
         if (e.op === '!') { c.ual = '!' + e.x + ' = ' + e.r; c.say = 'UAL face „nu” (!): ' + c.ual + '. Ce era adevărat devine fals și invers.'; break }

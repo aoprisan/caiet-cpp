@@ -47,6 +47,11 @@ t('pointers: &, *, nullptr, comparison', () => {
   assert.equal(out('int a, b;\nint *p = &a, *q = &b;\ncout << p << " " << q << " " << nullptr;'), '0x1000 0x1004 0');
   assert.equal(out('int x;\nint *p = &x;\ncin >> x;\ncout << *p;', '9'), '9');
 });
+t('pointers: an address is a place on the stack, taken again after }', () => {
+  // d takes the place b had; a pointer to b still prints that address.
+  assert.equal(out('int a = 1;\nint *p = &a;\n{\nint b = 2;\np = &b;\ncout << p << " ";\n}\nint d = 3;\ncout << &d << " " << p << " " << &a;'), '0x1008 0x1008 0x1008 0x1000');
+  assert.equal(out('int *p;\nfor (int i = 0; i < 2; i++) {\nint t = i;\np = &t;\ncout << p << " ";\n}'), '0x1008 0x1008 ');
+});
 t('pointers: the stepper shows where they point', () => {
   const r = compile(H + 'int a = 1;\nint *p;\nint *q = nullptr;\np = &a;\n{\nint b = 2;\nq = &b;\n}\ncout << a;' + F).run('');
   const last = r.trace.at(-2)!.vars.map(v => v[0] + ':' + (v[3] ?? v[1]));
@@ -179,8 +184,8 @@ t('bus: fetch, box, read, calculate, write, cin, cout, free', () => {
   assert.deepEqual(k, ['F4', 'decl:0', 'F5', 'in:5', 'write:0=5', 'F6', 'decl:1', 'read:0=5', '5*2=10', 'write:1=10', 'F7', 'read:1=10', '10>3=1',
     'F8', 'decl:2', 'read:1=10', 'write:2=10', 'F9', 'read:2=10', 'out:10', 'free:2', 'F11', 'free:1,0']);
   // Memory as it is right after each event: the box exists (empty) at its decl, gets its value at the write.
-  assert.deepEqual(r.bus[1].mem, [[0, 'a', undefined, false]]);
-  assert.deepEqual(r.bus[4].mem, [[0, 'a', 5, false]]);
+  assert.deepEqual(r.bus[1].mem, [[0, 'a', undefined, false, 0]]);
+  assert.deepEqual(r.bus[4].mem, [[0, 'a', 5, false, 0]]);
 });
 t('bus: a long program is cut, its errors keep the events so far', () => {
   const r = compile(H + 'int s = 0;\nfor (int i = 0; i < 1000; i++) s += i;\ncout << s;' + F, { bus: true }).run('');
@@ -209,6 +214,13 @@ t('masina: pointers, blocks, errors', () => {
   const b = masina(MASINI[2].code, '');
   assert.ok(b.cadre.some(c => c.fel === 'free' && c.freed.map(x => x.name).join() === 'i' && /Cutia lui i este eliberată/.test(c.say)));
   assert.match(b.cadre.at(-2)!.say, /se termină main/);
+  // The intro's stack demo: d gets the address b had, as the intro says.
+  const st = DEMOS.find(d => d.steps.some(s => s.free))!, sm = masina(H + st.lines.join('\n') + F, '');
+  const at = (n: string) => sm.cadre.find(c => c.fel === 'decl' && c.mem.at(-1)!.name === n)!.mem.at(-1)!.adr;
+  assert.equal(at('d'), at('b')); assert.equal(at('b'), '0x1004');
+  const dangling = masina(H + 'int *p;\n{\nint b = 2;\np = &b;\n}\nint d = 3;\np = p;' + F, '');
+  assert.match(dangling.cadre.find(c => c.fel === 'read' && c.cell === 0 && c.line === 10)!.say, /0x1004, adresa cutiei b, care nu mai există/);
+  assert.match(dangling.cadre.find(c => c.fel === 'free' && c.freed.length === 1)!.say, /Cutia lui b este eliberată/);
   const e = masina(H + 'int a;\ncout << a;' + F, '');
   assert.equal(e.err?.kind, 'run'); assert.match(e.cadre.at(-1)!.say, /^Eroare la rulare, linia 5/);
   const c = masina(H + 'int a' + F, '');

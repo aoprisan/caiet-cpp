@@ -24,15 +24,18 @@ export type BusEvent =
   | { k: 'in'; v: number }
   | { k: 'out'; s: string }
   | { k: 'free'; slots: number[] };
-/** A box in memory as the machine view draws it: slot, name, value (undefined = empty), is it a pointer. */
-export type Box = [slot: number, name: string, value: number | undefined, ptr: boolean];
+/** A box in memory as the machine view draws it: slot, name, value (undefined = empty), is it a pointer, its place on the stack. */
+export type Box = [slot: number, name: string, value: number | undefined, ptr: boolean, at: number];
 /** One bus event with the memory right after it, how much was printed and the line being run. */
 export interface BusStep { e: BusEvent; mem: Box[]; out: number; line: number }
 export interface RunResult { out: string; steps: number; trace: Snapshot[]; end: Snapshot; cut: boolean; bus: BusStep[]; busCut: boolean }
 export interface Program { run(input?: string): RunResult }
 export interface Options { /** record what the processor does over the buses (slower; for the machine view) */ bus?: boolean }
-/** How cout shows a pointer: 0 for nullptr, else a made-up address, 4 bytes (one int) per box, like 0x1000. */
-export const adresa = (x: number) => x === 0 ? '0' : '0x' + (0x1000 + 4 * (x - 1)).toString(16);
+/**
+ * The made-up address of the box at place `at` on the stack (0 = the bottom): 4 bytes (one int) per box, from 0x1000.
+ * A box freed at `}` leaves its place to the next box declared, which then gets the same address.
+ */
+export const adresa = (at: number) => '0x' + (0x1000 + 4 * at).toString(16);
 
 export class CppError extends Error {
   readonly isCpp = true;
@@ -126,12 +129,16 @@ export function compile(src: string, opt: Options = {}): Program {
   let p = 0, nslots = 0, loops = 0, usingStd = false, steps = 0, outLen = 0, input = '', ip = 0;
   let mem: (number | undefined)[] = [], out: string[] = [], live: number[] = [], trace: Snapshot[] = [];
   const names: string[] = [], gl: boolean[] = [], isPtr: boolean[] = [];
+  // Where each box sits on the stack. A declaration always lands at the same height (blocks free what they take),
+  // and a freed box keeps its last place, so a pointer to it still prints the address it had.
+  const pos: number[] = [];
+  const push = (s: number) => { pos[s] = live.length; live.push(s) };
   // The bus recorder. B is fixed at compile time, so a normal run builds the same closures as before and pays nothing.
   const B = !!opt.bus;
   let bus: BusStep[] = [], busCut = false, busLine = 0;
   function ev(e: BusEvent) {
     if (bus.length >= BMAX) { busCut = true; return }
-    bus.push({ e, mem: live.map(s => [s, names[s], mem[s], !!isPtr[s]]), out: outLen, line: busLine });
+    bus.push({ e, mem: live.map(s => [s, names[s], mem[s], !!isPtr[s], pos[s]]), out: outLen, line: busLine });
   }
   /** The processor brings a line of the program from memory (once, even if the line has several parts). */
   function fetch(line: number) {
@@ -370,14 +377,14 @@ export function compile(src: string, opt: Options = {}): Program {
       if (!global) { tick(line); fetch(line) }
       // The box exists first, then it gets its first value.
       for (const [s, init] of parts) {
-        mem[s] = global && !init ? 0 : undefined; live.push(s); ev({ k: 'decl', slot: s });
+        mem[s] = global && !init ? 0 : undefined; push(s); ev({ k: 'decl', slot: s });
         if (init) { const v = init(); mem[s] = v; ev({ k: 'write', slot: s, v }) }
       }
       return 0;
     };
     return () => {
       if (!global) tick(line);
-      for (const [s, init] of parts) { mem[s] = init ? init() : (global ? 0 : undefined); live.push(s) }
+      for (const [s, init] of parts) { mem[s] = init ? init() : (global ? 0 : undefined); push(s) }
       return 0;
     };
   }
@@ -486,7 +493,7 @@ export function compile(src: string, opt: Options = {}): Program {
             next();
             if (peek().t === 'str') { const s = next().v; items.push(() => s) }
             else if (isId('endl')) { next(); items.push(() => '\n') }
-            else { const e = bin(4); items.push(e.ptr ? () => adresa(e()) : () => String(e())) }
+            else { const e = bin(4); items.push(e.ptr ? () => { const x = e(); return x === 0 ? '0' : adresa(pos[x - 1]) } : () => String(e())) }
           }
           if (isOp('>>')) throw E('La cout se folosește << (nu >>).', line);
           expect(';');
