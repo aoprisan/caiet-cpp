@@ -76,7 +76,12 @@ t('probleme: search ignores diacritics, # finds by number', () => {
 t('probleme: statement blocks', () => {
   assert.deepEqual(blocuri('Primul.\nRând nou.\n\n- a\n- b'), [{ p: 'Primul.\nRând nou.' }, { li: ['a', 'b'] }]);
 });
-const vars = (body: string) => compile(H + body + F).run('').trace.at(-1)!.vars.map(v => [v[0], v[1]]);
+// A demo cut inside a block gets a last statement there (its snapshot sees the block's variables), then its closing braces.
+function vars(body: string) {
+  const open = (body.match(/\{/g) || []).length - (body.match(/\}/g) || []).length;
+  if (open) body += '\ncout << "";' + '}'.repeat(open);
+  return compile(H + body + F).run('').trace.at(open ? -2 : -1)!.vars.map(v => [v[0], v[1]]);
+}
 t('intro: every demo line leaves memory as the interpreter does', () => {
   for (const d of DEMOS) {
     d.steps.forEach((s, i) => {
@@ -87,7 +92,19 @@ t('intro: every demo line leaves memory as the interpreter does', () => {
       assert.deepEqual(memorie(d, i + 1), vars(d.lines.slice(0, s.line + 1).join('\n')), d.name + ', line ' + (s.line + 1));
     });
     assert.equal(d.steps.at(-1)!.line, d.lines.length - 1, d.name + ' ends on its last line');
+    assert.ok(memorie(d, d.steps.length).length <= 4, d.name + ' fits in the four boxes shown');
   }
+});
+t('intro: the stack demo frees boxes from the top', () => {
+  const d = DEMOS.find(d => d.steps.some(s => s.free))!;
+  const i = d.steps.findIndex(s => s.free);
+  assert.deepEqual(memorie(d, i).map(v => v[0]), ['a', 'b', 'c']);
+  assert.deepEqual(memorie(d, i + 1).map(v => v[0]), ['a']);
+  assert.deepEqual(memorie(d, d.steps.length), [['a', 7], ['d', 8]]);
+});
+t('explain: braces mention the stack', () => {
+  assert.match(explain('{').join(' '), /stivă/);
+  assert.match(explain('}').join(' '), /stivă/);
 });
 t('intro: quiz answers match the interpreter', () => {
   for (const q of INTREBARI) {

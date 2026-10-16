@@ -57,6 +57,12 @@
         <ol><li>calculează ce este în dreapta semnului <code>=</code>;</li><li>pune rezultatul în cutia din stânga.</li></ol>
         <p>Ca să întrebi „sunt egale?” se folosește <code>==</code>, de exemplu în <code>if (a == 5)</code>.</p>
       </div>
+      <div class="icard">
+        <div class="ipic stack" aria-hidden="true"><i>c</i><i>b</i><i>a</i><em>← vârf</em></div>
+        <h3>Stiva</h3>
+        <p>Cutiile variabilelor stau într-o parte a memoriei numită <b>stivă</b>. Ca la un teanc de farfurii: fiecare <code>int</code> nou pune o cutie <b>deasupra</b> celorlalte, în vârf.</p>
+        <p>La <code>}</code>, cutiile luate în blocul acela sunt scoase de sus: ultima pusă pleacă prima. Locul lor se refolosește. Panoul „Stiva” de lângă program îți arată asta la fiecare pas.</p>
+      </div>
     </div>
 
     <h3 class="isec">Urmărește procesorul</h3>
@@ -70,7 +76,7 @@
         <div class="dcol">
           <span class="dlab">Procesorul calculează</span>
           <div class="dcpu" id="dCpu"></div>
-          <span class="dlab">Memoria</span>
+          <span class="dlab">Memoria: stiva</span>
           <div class="dmem" id="dMem"></div>
         </div>
       </div>

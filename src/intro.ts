@@ -1,10 +1,13 @@
 // The intro: small programs the processor walks through step by step, plus quiz questions about
-// variables and assignment. Data only, no DOM; tests check every step against the interpreter.
+// variables, assignment and the stack. Data only, no DOM; tests check every step against the interpreter.
 
-/** One step of the processor. `decl` takes a new box, `set` puts a number in a box, `read` lists the boxes it looks into. */
-export interface Pas { line: number; say: string; cpu?: string; read?: string[]; decl?: string; set?: [string, number] }
+/**
+ * One step of the processor. `decl` takes a new box on top of the stack, `set` puts a number in a box,
+ * `read` lists the boxes it looks into, `free` takes boxes off the top of the stack (at the `}` of a block).
+ */
+export interface Pas { line: number; say: string; cpu?: string; read?: string[]; decl?: string; set?: [string, number]; free?: string[] }
 export interface Demo { name: string; lines: string[]; steps: Pas[] }
-/** What the memory holds after a step: box name -> value (undefined = taken, still empty), in the order the boxes were taken. */
+/** What the stack holds after a step: box name -> value (undefined = taken, still empty), bottom first. */
 export type Memorie = [name: string, value: number | undefined][];
 
 export const DEMOS: Demo[] = [
@@ -47,12 +50,27 @@ export const DEMOS: Demo[] = [
       { line: 3, read: ['aux'], set: ['y', 3], cpu: '3', say: 'y = aux: pune 3 în y. Gata: x = 8 și y = 3, s-au schimbat!' },
     ],
   },
+  {
+    name: 'Stiva și blocurile',
+    lines: ['int a = 2;', '{', '    int b = a * 3;', '    int c = b + 1;', '    a = c;', '}', 'int d = a + 1;'],
+    steps: [
+      { line: 0, decl: 'a', set: ['a', 2], cpu: '2', say: 'Ia prima cutie, cea de jos, și pune în ea 2. Cutiile se pun una peste alta, ca farfuriile într-un teanc: asta e stiva.' },
+      { line: 1, say: 'Acolada { deschide un bloc. Procesorul ține minte cât de înaltă e stiva acum: o cutie.' },
+      { line: 2, decl: 'b', cpu: 'a * 3', say: 'Ia cutia de deasupra lui a și scrie pe ea „b”. Cutia nouă ajunge mereu în vârful stivei.' },
+      { line: 2, read: ['a'], set: ['b', 6], cpu: '2 * 3 = 6', say: 'Citește a (2), calculează 2 * 3 = 6 și pune 6 în b.' },
+      { line: 3, decl: 'c', read: ['b'], set: ['c', 7], cpu: '6 + 1 = 7', say: 'Pune cutia c deasupra lui b, apoi pune în ea 6 + 1 = 7. Stiva are acum trei cutii.' },
+      { line: 4, read: ['c'], set: ['a', 7], cpu: '7', say: 'a = c: pune 7 în a. Din bloc poți folosi și cutiile de dedesubt, cum e a.' },
+      { line: 5, free: ['c', 'b'], say: 'Acolada } închide blocul. Cutiile luate în bloc sunt scoase din vârf: întâi c, apoi b. De aici nu mai poți scrie b sau c.' },
+      { line: 6, decl: 'd', read: ['a'], set: ['d', 8], cpu: '7 + 1 = 8', say: 'Cutia d se pune deasupra lui a, unde a fost b. Iar a a rămas 7: ce s-a schimbat în bloc se păstrează.' },
+    ],
+  },
 ];
 
 /** The memory after the first `upto` steps of a demo (0 = empty memory). */
 export function memorie(d: Demo, upto: number): Memorie {
   const m: Memorie = [];
   for (const s of d.steps.slice(0, upto)) {
+    if (s.free) for (const f of s.free) if (m.at(-1)?.[0] === f) m.pop();
     if (s.decl) m.push([s.decl, undefined]);
     if (s.set) { const c = m.find(v => v[0] === s.set![0]); if (c) c[1] = s.set[1] }
   }
@@ -73,5 +91,9 @@ export const INTREBARI: Intrebare[] = [
   {
     code: 'int a = 2, b = 7;\na = b;\nb = a;', ask: 'Ce număr este în b la sfârșit?', options: [2, 7], ok: 1,
     why: 'După a = b, în a este 7. Apoi b = a pune tot 7 în b. Numărul 2 s-a pierdut, de aceea ai nevoie de o a treia cutie.',
+  },
+  {
+    code: 'int a = 1;\n{\n    int b = a + 4;\n    a = b;\n}', ask: 'Ce număr este în a la sfârșit?', options: [1, 4, 5], ok: 2,
+    why: 'b este scoasă de pe stivă la }, dar a stă sub ea și rămâne. Înainte de }, a primise numărul din b, adică 5.',
   },
 ];

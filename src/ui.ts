@@ -276,16 +276,21 @@ function drawIntro() {
 function showDemo(i: number) {
   const d = DEMOS[demo], n = d.steps.length;
   dStep = Math.max(0, Math.min(n, i));
-  const s = d.steps[dStep - 1], mem = memorie(d, dStep);
+  const s = d.steps[dStep - 1], mem = memorie(d, dStep), was = memorie(d, dStep - 1);
   dCode.innerHTML = d.lines.map((l, k) => '<div' + (s?.line === k ? ' class="cur"' : '') + '>' + paint(l) + '</div>').join('');
   dCpu.textContent = s?.cpu ?? '';
   dMem.innerHTML = '';
-  for (let k = 0; k < 4; k++) {
+  // A stack: box 1 at the bottom, the last box taken (the top) drawn highest.
+  for (let k = 3; k >= 0; k--) {
     const v = mem[k], box = el('div', 'dbox');
     box.append(el('small', '', 'cutia ' + (k + 1)));
-    if (!v) { box.classList.add('free'); box.append(el('span', '', 'liberă')) }
-    else {
+    if (!v) {
+      const gone = s?.free && was[k];
+      box.classList.add('free'); box.append(el('span', '', gone ? 'scoasă de pe stivă (era ' + gone[0] + ')' : 'liberă'));
+      if (gone) box.classList.add('w');
+    } else {
       box.append(el('span', 'dname', v[0]), el('b', '', v[1] === undefined ? 'goală' : String(v[1])));
+      if (k === mem.length - 1) box.append(el('em', '', '← vârf'));
       if (v[1] === undefined) box.classList.add('empty');
       if (s?.read?.includes(v[0])) box.classList.add('r');
       if (s?.decl === v[0] || s?.set?.[0] === v[0]) box.classList.add('w');

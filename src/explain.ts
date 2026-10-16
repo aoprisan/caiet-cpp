@@ -102,7 +102,7 @@ function parts(s: string): string[] {
   s = s.trim(); let m: RegExpExecArray | null;
   if (!s) return [];
   if ((m = /^\}\s*while\s*(\(.*)$/.exec(s))) return ['Sfârșitul repetiției „do”. Dacă ' + cond(paren(m[1])[0]) + ', se repetă din nou de la „do”; altfel programul merge mai departe.'];
-  if (s[0] === '}') return ['Aici se închide blocul deschis mai sus cu „{”.'].concat(parts(s.slice(1)));
+  if (s[0] === '}') return ['Aici se închide blocul deschis mai sus cu „{”. Variabilele declarate în el sunt scoase de pe stivă.'].concat(parts(s.slice(1)));
   if (s[0] === '{') return parts(s.slice(1));
   if ((m = /^(if|while|for)\s*(\(.*)$/.exec(s))) {
     const [c, rest] = paren(m[2]); let t: string;
@@ -125,7 +125,7 @@ export function explain(raw: string): string[] {
   if (!t) return ['Linie goală. Nu face nimic, doar aerisește programul.'];
   if (t.startsWith('//')) return ['Comentariu: o notiță pentru oameni. Calculatorul o ignoră.'];
   if (/^#\s*include/.test(t)) return ['Aduce în program uneltele de citire și afișare: cin și cout.'];
-  if (t === '{') return ['Începe un bloc: un grup de instrucțiuni care merg împreună.'];
+  if (t === '{') return ['Începe un bloc: un grup de instrucțiuni care merg împreună. Variabilele declarate în el se pun pe stivă și dispar la „}”.'];
   const code = strip(raw), list = parts(code), bare = code.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '');
   if (!list.length) list.push('Nu știu să explic linia aceasta.');
   if (bare.includes('%')) list.push('Semnul % dă restul împărțirii: 17 % 5 este 2.');
