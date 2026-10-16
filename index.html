@@ -18,13 +18,76 @@
   <header>
     <div>
       <h1>Caiet <span>C++</span></h1>
-      <p class="sub">Scrie programul, pune datele de intrare și apasă Rulează.</p>
+      <p class="sub">Scrie programul, pune datele de intrare și apasă Rulează. <button type="button" class="link" id="iShow" hidden>Cum lucrează calculatorul?</button></p>
     </div>
     <div class="tools">
       <select id="ex" aria-label="Alege un exemplu"></select>
       <button class="run" id="run" type="button">▶ Rulează</button>
     </div>
   </header>
+
+  <section class="intro" data-pane="start" id="intro" aria-labelledby="iT">
+    <div class="ihead">
+      <h2 id="iT">Înainte de cod: cum lucrează calculatorul</h2>
+      <button type="button" class="link" id="iHide">Ascunde</button>
+    </div>
+    <div class="icards">
+      <div class="icard">
+        <div class="ipic cpu" aria-hidden="true"><span>CPU</span></div>
+        <h3>Procesorul</h3>
+        <p>Este „creierul” calculatorului. Citește programul tău linie cu linie și face exact ce scrie acolo, de miliarde de ori pe secundă.</p>
+        <p>Nu ghicește nimic: face doar ce îi spui. Poate să calculeze, dar nu ține minte numerele. Ce vrea să păstreze, pune în memorie.</p>
+      </div>
+      <div class="icard">
+        <div class="ipic ram" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i></div>
+        <h3>Memoria</h3>
+        <p>Seamănă cu un dulap uriaș cu sertare mici, ca niște cutii. Fiecare cutie are numărul ei și ține <b>un singur număr</b>.</p>
+        <p>Procesorul poate să se uite într-o cutie (citire) sau să pună alt număr în ea (scriere). Numărul nou îl șterge pe cel vechi.</p>
+      </div>
+      <div class="icard">
+        <div class="ipic box" aria-hidden="true"><span>a</span><b>5</b></div>
+        <h3>Variabila</h3>
+        <p>Este o cutie din memorie căreia îi dai un nume. <code>int a;</code> îi spune procesorului: „ia o cutie pentru un număr întreg și scrie pe ea <b>a</b>”.</p>
+        <p>De acum, când scrii <code>a</code>, procesorul știe în ce cutie să se uite. La început cutia e goală: aici primești eroare dacă o citești înainte să pui ceva în ea.</p>
+      </div>
+      <div class="icard">
+        <div class="ipic arrow" aria-hidden="true"><span>a</span><em>←</em><b>5</b></div>
+        <h3>Atribuirea</h3>
+        <p><code>a = 5;</code> se citește „<b>a primește 5</b>”, nu „a este egal cu 5”. Procesorul face doi pași, mereu în ordinea asta:</p>
+        <ol><li>calculează ce este în dreapta semnului <code>=</code>;</li><li>pune rezultatul în cutia din stânga.</li></ol>
+        <p>Ca să întrebi „sunt egale?” se folosește <code>==</code>, de exemplu în <code>if (a == 5)</code>.</p>
+      </div>
+    </div>
+
+    <h3 class="isec">Urmărește procesorul</h3>
+    <div class="demo">
+      <div class="dpick" id="dPick" role="group" aria-label="Alege programul"></div>
+      <div class="dbody">
+        <div class="dcol">
+          <span class="dlab">Programul</span>
+          <pre id="dCode"></pre>
+        </div>
+        <div class="dcol">
+          <span class="dlab">Procesorul calculează</span>
+          <div class="dcpu" id="dCpu"></div>
+          <span class="dlab">Memoria</span>
+          <div class="dmem" id="dMem"></div>
+        </div>
+      </div>
+      <p class="dsay" id="dSay" aria-live="polite"></p>
+      <div class="stepbar">
+        <button type="button" id="dFirst" aria-label="De la început" title="De la început">|◀</button>
+        <button type="button" id="dPrev" aria-label="Pasul dinainte" title="Pasul dinainte">◀</button>
+        <button type="button" id="dNext" aria-label="Pasul următor" title="Pasul următor">▶</button>
+        <span id="dNum"></span>
+        <button type="button" class="link" id="dOpen">Deschide în caiet</button>
+      </div>
+    </div>
+
+    <h3 class="isec">Verifică-te</h3>
+    <div class="quiz" id="quiz"></div>
+    <button type="button" class="run" id="iGo">Am înțeles, hai la program →</button>
+  </section>
 
   <div class="grid">
     <div class="panel" data-pane="cod">
@@ -110,6 +173,7 @@
   </section>
 
   <nav class="tabs" id="tabs" aria-label="Părțile caietului">
+    <button type="button" data-tab="start"><span aria-hidden="true">▦</span>Început</button>
     <button type="button" data-tab="cod"><span aria-hidden="true">{ }</span>Cod</button>
     <button type="button" data-tab="rulare"><span aria-hidden="true">▶</span>Rulare</button>
     <button type="button" data-tab="pasi"><span aria-hidden="true">⇥</span>Pași</button>

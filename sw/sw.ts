@@ -3,8 +3,8 @@
 // Compiled as a classic script (sw/tsconfig.json), so it must not import or export anything.
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
-const CACHE = 'caiet-v1';
-const SHELL = ['./', 'index.html', 'css/style.css', 'dist/ui.js', 'dist/interp.js', 'dist/explain.js', 'dist/probleme.js', 'probleme/probleme.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
+const CACHE = 'caiet-v2';
+const SHELL = ['./', 'index.html', 'css/style.css', 'dist/ui.js', 'dist/interp.js', 'dist/explain.js', 'dist/intro.js', 'dist/probleme.js', 'probleme/probleme.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 
 sw.addEventListener('install', e => {
