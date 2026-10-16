@@ -4,6 +4,7 @@ import { compile, CppError } from '../src/interp.js';
 import { explain } from '../src/explain.js';
 import { note, matches, same, verifica, blocuri, type Problema } from '../src/probleme.js';
 import { DEMOS, INTREBARI, memorie } from '../src/intro.js';
+import { MASINI, masina } from '../src/masina.js';
 
 const H = '#include <iostream>\nusing namespace std;\nint main(){\n', F = '\nreturn 0;}';
 const out = (body: string, inp?: string) => compile(H + body + F).run(inp || '').out;
@@ -45,6 +46,11 @@ t('pointers: &, *, nullptr, comparison', () => {
   assert.equal(out('int* p = nullptr;\nint a = 3;\nif (p == nullptr) p = &a;\nif (p) cout << *p * 2;'), '6');
   assert.equal(out('int a, b;\nint *p = &a, *q = &b;\ncout << p << " " << q << " " << nullptr;'), '0x1000 0x1004 0');
   assert.equal(out('int x;\nint *p = &x;\ncin >> x;\ncout << *p;', '9'), '9');
+});
+t('pointers: an address is a place on the stack, taken again after }', () => {
+  // d takes the place b had; a pointer to b still prints that address.
+  assert.equal(out('int a = 1;\nint *p = &a;\n{\nint b = 2;\np = &b;\ncout << p << " ";\n}\nint d = 3;\ncout << &d << " " << p << " " << &a;'), '0x1008 0x1008 0x1008 0x1000');
+  assert.equal(out('int *p;\nfor (int i = 0; i < 2; i++) {\nint t = i;\np = &t;\ncout << p << " ";\n}'), '0x1008 0x1008 ');
 });
 t('pointers: the stepper shows where they point', () => {
   const r = compile(H + 'int a = 1;\nint *p;\nint *q = nullptr;\np = &a;\n{\nint b = 2;\nq = &b;\n}\ncout << a;' + F).run('');
@@ -163,5 +169,61 @@ t('intro: quiz answers match the interpreter', () => {
     const name = /în (\w+) la sfârșit/.exec(q.ask)![1];
     assert.equal(String(q.options[q.ok]), out(q.code + '\ncout << ' + name + ';'), q.code);
   }
+});
+t('bus: recording does not change what a program does', () => {
+  for (const [src, inp] of [...MASINI.map(m => [m.code, m.inp]), [H + 'int n,s=0;cin>>n;do{s+=n%10;n/=10;}while(n);int x=-s,y=!x;cout<<s<<x<<y<<(s>3&&x<0||0);int*p=&s;--*p;cout<<s<<(p!=nullptr);' + F, '2026']]) {
+    const a = compile(src).run(inp), b = compile(src, { bus: true }).run(inp);
+    assert.equal(b.out, a.out); assert.equal(b.steps, a.steps);
+    assert.equal(a.bus.length, 0); assert.ok(b.bus.length > 0);
+  }
+});
+t('bus: fetch, box, read, calculate, write, cin, cout, free', () => {
+  const r = compile(H + 'int a;\ncin >> a;\nint b = a * 2;\nif (b > 3) {\nint c = b;\ncout << c;\n}' + F, { bus: true }).run('5');
+  const k = r.bus.map(s => s.e.k === 'fetch' ? 'F' + s.e.line : s.e.k === 'read' || s.e.k === 'write' ? s.e.k + ':' + s.e.slot + '=' + s.e.v
+    : s.e.k === 'alu' ? s.e.x + s.e.op + s.e.y + '=' + s.e.r : s.e.k === 'free' ? 'free:' + s.e.slots : s.e.k === 'decl' ? 'decl:' + s.e.slot : s.e.k + ':' + ('v' in s.e ? s.e.v : s.e.s));
+  assert.deepEqual(k, ['F4', 'decl:0', 'F5', 'in:5', 'write:0=5', 'F6', 'decl:1', 'read:0=5', '5*2=10', 'write:1=10', 'F7', 'read:1=10', '10>3=1',
+    'F8', 'decl:2', 'read:1=10', 'write:2=10', 'F9', 'read:2=10', 'out:10', 'free:2', 'F11', 'free:1,0']);
+  // Memory as it is right after each event: the box exists (empty) at its decl, gets its value at the write.
+  assert.deepEqual(r.bus[1].mem, [[0, 'a', undefined, false, 0]]);
+  assert.deepEqual(r.bus[4].mem, [[0, 'a', 5, false, 0]]);
+});
+t('bus: a long program is cut, its errors keep the events so far', () => {
+  const r = compile(H + 'int s = 0;\nfor (int i = 0; i < 1000; i++) s += i;\ncout << s;' + F, { bus: true }).run('');
+  assert.ok(r.busCut); assert.equal(r.bus.length, 1500); assert.equal(r.out, '499500');
+  const e = err(H + 'int a = 1;\na = a / (a - 1);' + F);
+  assert.equal(e.bus?.length, 0); // only recorded on request
+  assert.throws(() => compile(H + 'int a = 1;\na = a / (a - 1);' + F, { bus: true }).run(''), (x: unknown) => x instanceof CppError && x.bus!.some(s => s.e.k === 'alu'));
+});
+t('masina: frames say what travels on each bus', () => {
+  const m = masina(MASINI[0].code, MASINI[0].inp), f = (k: string) => m.cadre.find(c => c.fel === k)!;
+  assert.deepEqual([f('fetch').adr, f('fetch').cmd, f('fetch').date, f('fetch').spre], ['linia 5', 'citește', 'int a, b, s;', 'cpu']);
+  assert.deepEqual([f('in').io, f('in').ioText, f('in').cin], ['in', '12', 1]);
+  assert.deepEqual([f('write').adr, f('write').cmd, f('write').date, f('write').spre], ['0x1000', 'scrie', '12', 'mem']);
+  assert.match(f('read').say, /adresa 0x1000 și comanda „citește”/);
+  assert.equal(f('alu').ual, '12 + 30 = 42');
+  assert.deepEqual([f('out').io, f('out').ioText, f('out').out], ['out', '42', 2]);
+  assert.match(m.cadre.at(-1)!.say, /^Gata!/);
+  assert.equal(m.cadre.at(-1)!.out, 2);
+});
+t('masina: pointers, blocks, errors', () => {
+  const p = masina(MASINI[3].code, '');
+  const w = p.cadre.find(c => c.fel === 'write' && c.cell === 1)!;
+  assert.equal(w.date, '0x1000'); assert.match(w.say, /adresa 0x1000 \(a lui a\)/);
+  assert.ok(p.cadre.some(c => c.fel === 'read' && c.date === '0x1000' && /adresa cutiei a/.test(c.say)));
+  assert.equal(p.out, '6');
+  const b = masina(MASINI[2].code, '');
+  assert.ok(b.cadre.some(c => c.fel === 'free' && c.freed.map(x => x.name).join() === 'i' && /Cutia lui i este eliberată/.test(c.say)));
+  assert.match(b.cadre.at(-2)!.say, /se termină main/);
+  // The intro's stack demo: d gets the address b had, as the intro says.
+  const st = DEMOS.find(d => d.steps.some(s => s.free))!, sm = masina(H + st.lines.join('\n') + F, '');
+  const at = (n: string) => sm.cadre.find(c => c.fel === 'decl' && c.mem.at(-1)!.name === n)!.mem.at(-1)!.adr;
+  assert.equal(at('d'), at('b')); assert.equal(at('b'), '0x1004');
+  const dangling = masina(H + 'int *p;\n{\nint b = 2;\np = &b;\n}\nint d = 3;\np = p;' + F, '');
+  assert.match(dangling.cadre.find(c => c.fel === 'read' && c.cell === 0 && c.line === 10)!.say, /0x1004, adresa cutiei b, care nu mai există/);
+  assert.match(dangling.cadre.find(c => c.fel === 'free' && c.freed.length === 1)!.say, /Cutia lui b este eliberată/);
+  const e = masina(H + 'int a;\ncout << a;' + F, '');
+  assert.equal(e.err?.kind, 'run'); assert.match(e.cadre.at(-1)!.say, /^Eroare la rulare, linia 5/);
+  const c = masina(H + 'int a' + F, '');
+  assert.equal(c.cadre.length, 0); assert.equal(c.err?.kind, 'compile');
 });
 console.log(n + ' tests passed');

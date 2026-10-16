@@ -5,6 +5,7 @@ A browser playground for a small C++ subset, aimed at Romanian 7th graders: `int
 - Syntax highlighting, line-numbered editor
 - Error messages in plain Romanian with the line highlighted
 - Step-through execution with a visual stack of variables
+- A machine view: the processor, the memory, the address/data/control buses, the keyboard and the screen, with each value travelling between them as the program runs
 - A plain-language explanation of the current line
 - 273 practice problems from [pbinfo.ro](https://www.pbinfo.ro/) (class 9, language basics) with search and filters; a program can be checked on each problem's examples
 - Installable as an app (PWA) and works offline after the first visit
