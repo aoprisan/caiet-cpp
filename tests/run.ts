@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { compile, CppError } from '../src/interp.js';
 import { explain } from '../src/explain.js';
-import { note, matches, same, verifica, blocuri, type Problema } from '../src/probleme.js';
+import { note, matches, same, verifica, blocuri, pentruPbinfo, type Problema } from '../src/probleme.js';
 import { DEMOS, INTREBARI, memorie } from '../src/intro.js';
 import { MASINI, masina } from '../src/masina.js';
 
@@ -119,6 +119,13 @@ t('probleme: search ignores diacritics, # finds by number', () => {
   assert.ok(matches(P({ cerinta: 'Câte numere sunt pare?' }), 'cate pare'));
   assert.ok(matches(P({}), '#939'));
   assert.ok(!matches(P({}), '93'));
+});
+t('probleme: program prepared for pbinfo', () => {
+  const src = H + 'int a;cin>>a;cout<<a;' + F;
+  assert.deepEqual(pentruPbinfo(src, P({})), { code: src, fis: false });
+  const { code, fis } = pentruPbinfo('#include <iostream>\nusing namespace std;\nint main()\n{\n    int a;\n}', P({ fis: 'sum' }));
+  assert.ok(fis);
+  assert.equal(code, '#include <iostream>\n#include <fstream>\nusing namespace std;\nint main()\n{\n    ifstream cin("sum.in");\n    ofstream cout("sum.out");\n    int a;\n}');
 });
 t('probleme: statement blocks', () => {
   assert.deepEqual(blocuri('Primul.\nRând nou.\n\n- a\n- b'), [{ p: 'Primul.\nRând nou.' }, { li: ['a', 'b'] }]);
