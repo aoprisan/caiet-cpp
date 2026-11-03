@@ -1,5 +1,5 @@
-// Page wiring: intro (processor and memory), editor, highlighting, run, step-through stack view, machine view (CPU, memory, buses),
-// examples, pbinfo problems.
+// Page wiring: section menu, intro (processor and memory), editor, highlighting, run, step-through stack view,
+// machine view (CPU, memory, buses), examples, pbinfo problems (with the statement beside the editor while solving one).
 import { compile, CppError, type RunResult, type Snapshot } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
@@ -212,14 +212,52 @@ code.addEventListener('scroll', sync);
 ex.addEventListener('change', () => { load(ex.value); run() });
 $('run').addEventListener('click', () => { run(); if (MOBILE.matches) tab('rulare') });
 
-// ---- Phone view: tabs, keyboard-aware height, key row. Keep MOBILE in sync with the media query in css/style.css.
+// ---- Sections (the menu) and, on a phone, the parts of the caiet (bottom tabs). Keep MOBILE in sync with the media query in css/style.css.
 const MOBILE = matchMedia('(max-width:760px), (pointer:coarse) and (max-height:500px)');
+type Sec = 'start' | 'caiet' | 'probleme' | 'masina' | 'ajutor';
+const SECS: Sec[] = ['start', 'caiet', 'probleme', 'masina', 'ajutor'];
+const secs = [...document.querySelectorAll<HTMLElement>('[data-sec]')], links = [...document.querySelectorAll<HTMLAnchorElement>('#menu a')];
 const panes = [...document.querySelectorAll<HTMLElement>('[data-pane]')], tabs = [...document.querySelectorAll<HTMLButtonElement>('#tabs button')];
+const menuBtn = $('menuBtn');
+let secNow: Sec | '' = '', booted = false;
+/** Shows one section of the page; the address gets #name, so the browser's Back button goes to the previous one. */
+function sec(name: Sec) {
+  menu(false);
+  if (name !== secNow) {
+    secNow = name;
+    secs.forEach(s => s.classList.toggle('on', s.dataset.sec === name));
+    links.forEach(a => { if (a.dataset.go === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current') });
+    document.body.dataset.at = name;
+    if (name !== 'masina') mStop();
+    if (name !== 'start') store.set('caiet.sec', name);
+    if (!MOBILE.matches) window.scrollTo(0, 0);
+    if (name === 'caiet') paneTabs();
+  }
+  if (location.hash.slice(1) !== name) history[booted ? 'pushState' : 'replaceState'](null, '', '#' + name);
+}
+const fromHash = () => { const h = location.hash.slice(1) as Sec; if (SECS.includes(h)) sec(h) };
+addEventListener('hashchange', fromHash);
+addEventListener('popstate', fromHash);
+/** The menu is a drop-down on a phone (☰), a bar on a computer. */
+function menu(open: boolean) {
+  document.body.classList.toggle('menu-open', open);
+  menuBtn.setAttribute('aria-expanded', String(open));
+}
+menuBtn.addEventListener('click', e => { e.stopPropagation(); menu(!document.body.classList.contains('menu-open')) });
+document.addEventListener('click', e => { if (!(e.target as Element).closest('#menu')) menu(false) });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('menu-open')) { menu(false); menuBtn.focus() } });
+links.forEach(a => a.addEventListener('click', e => { e.preventDefault(); sec(a.dataset.go as Sec) }));
+// The editor and the statement column are sized to the screen below the sticky top bar (--top-h in css/style.css).
+new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', $('top').offsetHeight + 'px')).observe($('top'));
+
+let paneNow = 'cod';
 function tabBtn(name: string) { return tabs.find(b => b.dataset.tab === name) }
+function paneTabs() { tabs.forEach(b => b.setAttribute('aria-current', String(secNow === 'caiet' && b.dataset.tab === paneNow))) }
+/** On a phone the caiet shows one part at a time: the statement, the code, the run, the steps. */
 function tab(name: string) {
+  paneNow = name;
   panes.forEach(p => p.classList.toggle('on', p.dataset.pane === name));
-  tabs.forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === name)));
-  if (name !== 'masina') mStop();
+  sec('caiet'); paneTabs();
   // A pane that was hidden lost its scroll position; bring the interesting line back.
   if (name === 'cod' && (curLine || badLine)) { reveal(curLine || badLine); sync() }
 }
@@ -369,20 +407,15 @@ mRange.addEventListener('input', () => { mStop(); mShow(+mRange.value) });
 /** Opens the machine view on a program and brings it into sight. */
 function toMachine(k: number) {
   mLoad(k);
-  if (MOBILE.matches) tab('masina'); else $('masina').scrollIntoView({ behavior: 'smooth' });
+  sec('masina');
 }
 $('sMach').addEventListener('click', () => toMachine(CAIET));
 $('iMach').addEventListener('click', () => toMachine(0));
 mLoad(0);
 
 // ---- Intro: what the processor and the memory are, a step-by-step demo of boxes and assignments, a short quiz.
-const intro = $('intro'), iShow = $('iShow'), dCode = $('dCode'), dCpu = $('dCpu'), dMem = $('dMem'), dSay = $('dSay'), dNum = $('dNum');
+const dCode = $('dCode'), dCpu = $('dCpu'), dMem = $('dMem'), dSay = $('dSay'), dNum = $('dNum');
 let demo = 0, dStep = 0;
-/** On a computer the intro sits above the editor until it is hidden; on a phone it is the first tab. */
-function drawIntro() {
-  const off = !!store.get('caiet.intro');
-  intro.hidden = off && !MOBILE.matches; iShow.hidden = !off;
-}
 function showDemo(i: number) {
   const d = DEMOS[demo], n = d.steps.length;
   dStep = Math.max(0, Math.min(n, i));
@@ -424,7 +457,7 @@ $('dPrev').addEventListener('click', () => showDemo(dStep - 1));
 $('dNext').addEventListener('click', () => showDemo(dStep + 1));
 $('dOpen').addEventListener('click', () => {
   ex.value = String(demo); load(ex.value); run(); showStep(0);
-  if (MOBILE.matches) tab('pasi'); else $('code').closest('.grid')!.scrollIntoView({ behavior: 'smooth' });
+  if (MOBILE.matches) tab('pasi'); else sec('caiet');
 });
 INTREBARI.forEach((q, k) => {
   const box = el('div', 'qitem'), pre = el('pre'), row = el('div', 'qopts'), why = el('p', 'qwhy');
@@ -442,16 +475,8 @@ INTREBARI.forEach((q, k) => {
   });
   $('quiz').append(box);
 });
-function closeIntro() {
-  store.set('caiet.intro', 'citit'); drawIntro();
-  if (MOBILE.matches) tab('cod'); else window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-$('iHide').addEventListener('click', closeIntro);
-$('iGo').addEventListener('click', closeIntro);
-iShow.addEventListener('click', () => { store.set('caiet.intro', ''); drawIntro(); intro.scrollIntoView({ behavior: 'smooth' }) });
-MOBILE.addEventListener('change', drawIntro);
-drawIntro(); showDemo(0);
-tab(store.get('caiet.intro') ? 'cod' : 'start'); fit();
+$('iGo').addEventListener('click', () => { store.set('caiet.intro', 'citit'); if (MOBILE.matches) tab('cod'); else sec('caiet') });
+showDemo(0);
 
 // ---- Problems from pbinfo (probleme/probleme.json, built by tools/probleme.mjs): list, statement, check on the examples.
 let probs: Problema[] = [], sel: Problema | undefined;
@@ -500,46 +525,61 @@ function list() {
     li.append(b); pUl.append(li);
   }
 }
-/** Shows a problem's statement; `open` also brings it up on a phone (instead of the list). */
-function show(p: Problema, open: boolean) {
-  sel = p; store.set('caiet.psel', String(p.id));
-  pView.innerHTML = '';
-  const back = el('button', 'mob pback', '← Înapoi la listă'); back.type = 'button';
-  back.addEventListener('click', () => { probsEl.classList.remove('open'); pUl.querySelector<HTMLElement>('.on')?.focus() });
-  const h = el('h3', '', p.nume), meta = el('p', 'pmeta', CAPITOLE[p.sub] + ' · dificultate ' + DIFICULTATI[p.dif] + ' · ');
+/** Writes a problem's statement into `into`: title, notes, the parts of the text and the examples.
+ * `here` = it sits beside the editor while the problem is being solved (no "solve" button, no authors). */
+function statement(into: HTMLElement, p: Problema, here: boolean) {
+  const h = el('h3', '', p.nume), meta = el('p', 'pmeta', here ? '' : CAPITOLE[p.sub] + ' · dificultate ' + DIFICULTATI[p.dif] + ' · ');
   const a = el('a', '', 'problema #' + p.id + ' pe pbinfo.ro'); a.href = url(p); a.target = '_blank'; a.rel = 'noopener';
-  meta.append(a); pView.append(back, h, meta);
+  meta.append(a); into.append(h, meta);
   const n = noteOf(p);
-  for (const t of n.text) pView.append(el('p', n.stop && t === n.text[0] ? 'pwarn stop' : 'pwarn', t));
-  const go = el('button', 'run', ex.value === 'p' + p.id ? '✎ Continuă în caiet' : '✎ Rezolvă în caiet'); go.type = 'button';
-  go.addEventListener('click', () => start(p));
-  pView.append(go);
-  const part = (title: string, s: string) => { if (!s) return; pView.append(el('h4', '', title)); prose(pView, s) };
-  for (const [t, s] of p.sect || []) if (!t) prose(pView, s);
+  for (const t of n.text) if (!here || n.stop) into.append(el('p', n.stop && t === n.text[0] ? 'pwarn stop' : 'pwarn', t));
+  if (!here) {
+    const go = el('button', 'run', ex.value === 'p' + p.id ? '✎ Continuă în caiet' : '✎ Rezolvă în caiet'); go.type = 'button';
+    go.addEventListener('click', () => start(p));
+    into.append(go);
+  }
+  const part = (title: string, s: string) => { if (!s) return; into.append(el('h4', '', title)); prose(into, s) };
+  for (const [t, s] of p.sect || []) if (!t) prose(into, s);
   part('Cerința', p.cerinta); part('Date de intrare', p.intrare); part('Date de ieșire', p.iesire); part('Restricții și precizări', p.restrictii);
   p.ex.forEach((e, i) => {
-    pView.append(el('h4', '', p.ex.length > 1 ? 'Exemplul ' + (i + 1) : 'Exemplu'));
+    into.append(el('h4', '', p.ex.length > 1 ? 'Exemplul ' + (i + 1) : 'Exemplu'));
     const box = el('div', 'pex'), use = el('button', 'pbtn', 'Pune în „Date de intrare”');
     for (const [t, v] of [['Intrare', e.in], ['Ieșire', e.out]]) { const d = el('div'); d.append(el('small', '', t), el('pre', '', v)); box.append(d) }
     if (e.ex) { const d = el('div', 'pexp'); prose(d, e.ex); box.append(d) }
     use.type = 'button';
     use.addEventListener('click', () => { if (ex.value !== 'p' + p.id) start(p); inp.value = e.in; saveMine(); run(); if (MOBILE.matches) tab('rulare') });
-    box.append(use); pView.append(box);
+    box.append(use); into.append(box);
   });
   for (const [t, s] of p.sect || []) if (t) part(t, s);
+  if (here) {
+    const other = el('a', 'pother', 'Alege altă problemă'); other.href = '#probleme';
+    other.addEventListener('click', e => { e.preventDefault(); show(p, false); sec('probleme') });
+    into.append(other);
+    return;
+  }
   const who = [p.autor && 'Autor: ' + p.autor, p.sursa && 'Sursa: ' + p.sursa].filter(Boolean).join(' · ');
-  if (who) pView.append(el('p', 'pfoot', who));
+  if (who) into.append(el('p', 'pfoot', who));
+}
+/** Shows a problem's statement in the problems section; `open` also brings it up on a phone (instead of the list). */
+function show(p: Problema, open: boolean) {
+  sel = p; store.set('caiet.psel', String(p.id));
+  pView.innerHTML = '';
+  const back = el('button', 'mob pback', '← Înapoi la listă'); back.type = 'button';
+  back.addEventListener('click', () => { probsEl.classList.remove('open'); pUl.querySelector<HTMLElement>('.on')?.focus() });
+  pView.append(back);
+  statement(pView, p, false);
   pView.scrollTop = 0;
   if (open) probsEl.classList.add('open');
   pUl.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.id === String(p.id)));
 }
-/** Opens a problem in the editor (with its own saved draft) and goes to the editor. */
+/** Opens a problem in the editor (with its own saved draft), with its statement beside it. */
 function start(p: Problema) {
   const v = 'p' + p.id;
+  store.set('caiet.enunt', '');
   probOption(v, p.nume); ex.value = v; load(v); run();
   if (sel === p) show(p, probsEl.classList.contains('open'));
   if (MOBILE.matches) tab('cod');
-  else { document.querySelector('.grid')!.scrollIntoView({ behavior: 'smooth' }); code.focus({ preventScroll: true }) }
+  else { sec('caiet'); code.focus({ preventScroll: true }) }
 }
 /** The problem being solved gets its own entry in the menu, right after "Programul meu". */
 function probOption(v: string, name: string) {
@@ -550,10 +590,25 @@ function probOption(v: string, name: string) {
 function drawBar() {
   const v = ex.value, on = isProb(v), p = probOf(v);
   $('pBar').hidden = !on;
+  drawEnunt();
   if (!on) return;
   $('pName').textContent = p ? p.nume : (ex.selectedOptions[0]?.text || '').replace('Problema: ', '');
-  $<HTMLButtonElement>('pCheck').disabled = $<HTMLButtonElement>('pShow').disabled = !p;
+  $<HTMLButtonElement>('pCheck').disabled = !p;
 }
+/** While a problem is in the editor its statement stays at hand: a column beside the code on a computer
+ * (it can be hidden with „Enunțul”, remembered in caiet.enunt), the „Enunț” tab on a phone. */
+const enunt = $('enunt'), eTog = $('eTog'), grid = $('grid');
+function drawEnunt() {
+  const p = probOf(ex.value), shown = !!p && (MOBILE.matches || store.get('caiet.enunt') !== 'ascuns');
+  tabBtn('enunt')!.hidden = eTog.hidden = !p;
+  eTog.setAttribute('aria-pressed', String(shown));
+  eTog.title = shown ? 'Ascunde enunțul problemei' : 'Arată enunțul problemei lângă program';
+  enunt.hidden = !shown; grid.classList.toggle('wp', shown);
+  if (p && enunt.dataset.id !== String(p.id)) { enunt.dataset.id = String(p.id); enunt.innerHTML = ''; statement(enunt, p, true); enunt.scrollTop = 0 }
+  if (!p && paneNow === 'enunt') tab('cod');
+}
+eTog.addEventListener('click', () => { store.set('caiet.enunt', eTog.getAttribute('aria-pressed') === 'true' ? 'ascuns' : ''); drawEnunt() });
+MOBILE.addEventListener('change', drawEnunt);
 function check() {
   const p = probOf(ex.value);
   if (!p) return;
@@ -587,11 +642,6 @@ function check() {
   }
 }
 $('pCheck').addEventListener('click', check);
-$('pShow').addEventListener('click', () => {
-  const p = probOf(ex.value); if (!p) return;
-  show(p, true);
-  if (MOBILE.matches) tab('probleme'); else probsEl.scrollIntoView({ behavior: 'smooth' });
-});
 for (const e of [pQ, pSub, pDif, pOk]) e.addEventListener('input', list);
 CAPITOLE.forEach((c, i) => pSub.add(new Option(c, String(i))));
 DIFICULTATI.forEach((d, i) => pDif.add(new Option(d[0].toUpperCase() + d.slice(1), String(i))));
@@ -600,6 +650,13 @@ const doc = store.get('caiet.doc') || '', docName = store.get('caiet.docName');
 if (isProb(doc) && docName) probOption(doc, docName);
 ex.value = isProb(doc) && docName ? doc : store.get('caiet.code') ? 'mine' : '0';
 load(ex.value); run();
+{ // First section: the address (#probleme), else the last one used, else the intro until it was read.
+  const h = location.hash.slice(1) as Sec, last = store.get('caiet.sec') as Sec | null;
+  const first: Sec = SECS.includes(h) ? h : last && SECS.includes(last) ? last : store.get('caiet.intro') ? 'caiet' : 'start';
+  if (first === 'caiet') tab('cod'); else { panes.forEach(p => p.classList.toggle('on', p.dataset.pane === 'cod')); sec(first) }
+  booted = true;
+}
+fit();
 
 pCount.textContent = 'Se încarcă problemele…';
 fetch('probleme/probleme.json').then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() as Promise<Culegere> }).then(d => {

@@ -1,6 +1,7 @@
 body{margin:0}
 [hidden]{display:none!important}
-/* Layout: a maths-notebook page. Header strip, then editor (left) beside input + output (right); one column on phones. */
+/* Layout: a maths-notebook page. A top bar with the menu of sections, then one section at a time.
+   The caiet: statement (while solving a problem) | editor | input + output + stack; one part at a time on phones. */
 :root{
   --bg:#eef2f8; --grid:#d9e2f1; --paper:#fbfcfe; --ink:#1b2a4e; --muted:#566588;
   --line:#c3cfe4; --accent:#1d4fd8; --accent-fg:#ffffff; --margin:#d9485f;
@@ -30,23 +31,47 @@ body{
   background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
   background-size:20px 20px;
 }
-.wrap{max-width:1120px; margin:0 auto; padding-inline:16px; padding-block:24px 48px; display:flex; flex-direction:column; gap:20px}
-header{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px}
-h1{font-family:var(--display); font-weight:800; font-size:2.2rem; line-height:1; margin:0; letter-spacing:-.02em}
+.wrap{max-width:1360px; margin:0 auto; padding-inline:16px; padding-block:12px 48px; display:flex; flex-direction:column; gap:16px}
+/* Top bar: name, the menu of sections, and (in the caiet) the document picker and Run. Sticky, so the menu is always in reach. */
+.top{position:sticky; top:0; z-index:10; display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px; padding:8px 12px;
+  background:var(--paper); border:1px solid var(--line); border-radius:8px; box-shadow:0 2px 10px rgb(0 0 0 / .06)}
+h1{font-family:var(--display); font-weight:800; font-size:1.6rem; line-height:1; margin:0; letter-spacing:-.02em; white-space:nowrap}
+h1 a{color:inherit; text-decoration:none}
 h1 span{color:var(--accent)}
-.sub{margin:6px 0 0; color:var(--muted)}
-.tools{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.menubtn{display:none}
+.menu{display:flex; flex-wrap:wrap; gap:2px}
+.menu a{display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:6px; color:var(--muted); text-decoration:none; font-weight:700}
+.menu a i{font:600 .9rem/1 var(--mono); font-style:normal}
+.menu a small{display:none}
+.menu a:hover{background:var(--bg); color:var(--ink)}
+.menu a[aria-current]{background:var(--cur-bg); color:var(--accent)}
+.tools{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-left:auto}
+body:not([data-at="caiet"]) .tools{display:none}
+.etog{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:9px 12px; font-weight:700; cursor:pointer}
+.etog::before{content:"¶ "; font-family:var(--mono)}
+.etog[aria-pressed="true"]{background:var(--cur-bg); border-color:var(--accent); color:var(--accent)}
+[data-sec]:not(.on){display:none}
 select,button{font:inherit; color:var(--ink)}
 select{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:9px 10px; max-width:100%}
 .run{background:var(--accent); color:var(--accent-fg); border:0; border-radius:6px; padding:10px 20px; font-weight:700; cursor:pointer}
 .run:hover{filter:brightness(1.08)}
 :focus-visible{outline:3px solid var(--accent); outline-offset:2px}
-.grid{display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:20px; align-items:start}
+.grid{display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); grid-template-areas:"cod side"; gap:20px; align-items:start}
+.grid > [data-pane="cod"]{grid-area:cod} .grid > .side{grid-area:side} .grid > .enunt{grid-area:enunt}
+/* Solving a problem: its statement in a column on the left, scrolling on its own and staying in sight. */
+.grid.wp{grid-template-columns:minmax(280px,1.1fr) minmax(0,1.6fr) minmax(290px,1.1fr); grid-template-areas:"enunt cod side"}
+@media (max-width:1180px){ .grid.wp{grid-template-columns:minmax(260px,1fr) minmax(0,1.5fr); grid-template-areas:"enunt cod" "enunt side"} }
+.enunt{position:sticky; top:calc(var(--top-h,64px) + 28px); max-height:calc(100vh - var(--top-h,64px) - 44px); overflow:auto; overscroll-behavior:contain;
+  background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:12px 14px; align-self:start}
+.enunt h3{font-size:1.3rem!important}
+.enunt .pmeta{margin-bottom:4px!important}
+.enunt .pex{grid-template-columns:minmax(0,1fr)}
+.pother{display:inline-block; margin-top:16px; font-weight:700}
 .side,.runbox{display:flex; flex-direction:column; gap:20px; min-width:0}
 .panel{min-width:0; display:flex; flex-direction:column; gap:6px}
 .label{font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); display:flex; justify-content:space-between; gap:8px}
 .label kbd{font-family:var(--mono); font-weight:400; text-transform:none; letter-spacing:0}
-.editor{display:flex; background:var(--paper); border:1px solid var(--line); border-radius:6px; overflow:hidden; height:clamp(340px,64vh,600px)}
+.editor{display:flex; background:var(--paper); border:1px solid var(--line); border-radius:6px; overflow:hidden; height:clamp(340px,calc(100vh - var(--top-h,64px) - 210px),720px)}
 .gutter{flex:none; width:3.2em; padding:12px 8px 60px 0; text-align:right; color:var(--muted); font:400 16px/24px var(--mono);
   border-right:2px solid var(--margin); overflow:hidden; user-select:none; font-variant-numeric:tabular-nums}
 .gutter div.bad{background:var(--err-bg); color:var(--err); font-weight:600}
@@ -94,7 +119,6 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 #status .goto{display:block; margin-top:8px; background:var(--paper); color:var(--err); border:1px solid currentColor; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer}
 /* Intro: processor and memory explained, a demo where boxes fill up step by step, a short quiz. */
 .intro{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:16px 18px; display:flex; flex-direction:column; gap:12px}
-.ihead{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 16px}
 .intro h2{font-family:var(--display); font-weight:800; font-size:1.5rem; line-height:1.15; margin:0}
 .intro h3{margin:0}
 .intro h3.isec{font-family:var(--display); font-weight:600; font-size:1.2rem; margin-top:8px}
@@ -161,7 +185,7 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 
 /* Machine view: keyboard + screen, CPU, buses, memory side by side; packets travel along the buses at each step.
    On a phone the same parts stack top to bottom and the buses turn vertical (see the media query). */
-.label .link{text-transform:none; letter-spacing:0; font-size:.85rem}
+.label .link{text-transform:none; letter-spacing:0; font-size:.85rem; white-space:nowrap}
 .masina{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:16px 18px; display:flex; flex-direction:column; gap:12px;
   --c-adr:var(--hl-kw); --c-dat:var(--hl-num); --c-cmd:var(--hl-io)}
 .masina h2{font-family:var(--display); font-weight:600; font-size:1.25rem; margin:0}
@@ -257,7 +281,7 @@ button.link{background:none; border:0; padding:0; color:var(--accent); font-weig
 .pbtn{background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 12px; font-weight:600; cursor:pointer}
 .probs{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:16px 18px; display:grid; grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:24px; align-items:start}
 .probs h2{font-family:var(--display); font-weight:600; font-size:1.25rem; margin:0 0 4px}
-.probs a{color:var(--accent)}
+.probs a,.stmt a{color:var(--accent)}
 .psub{margin:0 0 10px; color:var(--muted)}
 .pfilt{display:flex; flex-wrap:wrap; gap:8px}
 #pQ{flex:1 1 100%; min-width:0; font:inherit; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:9px 10px}
@@ -276,16 +300,16 @@ button.link{background:none; border:0; padding:0; color:var(--accent); font-weig
 #pUl small{color:var(--muted); font-size:.82rem}
 #pUl .ok{color:var(--ok); font-weight:800; font-size:1.1rem}
 #pView{min-width:0; max-height:760px; overflow:auto; padding-right:4px}
-#pView h3{font-family:var(--display); font-weight:800; font-size:1.6rem; line-height:1.1; margin:0; overflow-wrap:anywhere}
-#pView h4{margin:18px 0 4px; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
-#pView p{margin:0 0 8px; white-space:pre-line; max-width:70ch}
-#pView ul{margin:0 0 8px; padding-left:1.2em; max-width:70ch}
-#pView img{display:block; max-width:100%; height:auto; margin:8px 0; background:#fff; border-radius:4px}
-#pView .run{margin:4px 0 2px}
-#pView p.pmeta{color:var(--muted); font-size:.92rem; margin:4px 0 12px}
-#pView p.pwarn{background:var(--cur-bg); padding:8px 10px; border-radius:6px}
-#pView p.pwarn.stop{background:var(--err-bg); color:var(--err); font-weight:600}
-#pView p.pfoot{color:var(--muted); font-size:.85rem; margin-top:18px}
+.stmt h3{font-family:var(--display); font-weight:800; font-size:1.6rem; line-height:1.1; margin:0; overflow-wrap:anywhere}
+.stmt h4{margin:18px 0 4px; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+.stmt p{margin:0 0 8px; white-space:pre-line; max-width:70ch}
+.stmt ul{margin:0 0 8px; padding-left:1.2em; max-width:70ch}
+.stmt img{display:block; max-width:100%; height:auto; margin:8px 0; background:#fff; border-radius:4px}
+.stmt .run{margin:4px 0 2px}
+.stmt p.pmeta{color:var(--muted); font-size:.92rem; margin:4px 0 12px}
+.stmt p.pwarn{background:var(--cur-bg); padding:8px 10px; border-radius:6px}
+.stmt p.pwarn.stop{background:var(--err-bg); color:var(--err); font-weight:600}
+.stmt p.pfoot{color:var(--muted); font-size:.85rem; margin-top:18px}
 .pnone{color:var(--muted)}
 .pex{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px 12px; align-items:start}
 .pex small{font-size:.78rem; font-weight:700; color:var(--muted)}
@@ -303,18 +327,35 @@ button.link{background:none; border:0; padding:0; color:var(--accent); font-weig
 @media (max-width:760px), (pointer:coarse) and (max-height:500px){
   .wrap{position:fixed; left:0; right:0; top:var(--app-top,0px); height:var(--app-h,100dvh); max-width:none; overflow:hidden;
     padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); gap:8px}
-  header{flex-wrap:nowrap; align-items:center; gap:10px}
-  h1{font-size:1.4rem; white-space:nowrap}
-  .sub,.label kbd{display:none}
+  .top{position:relative; flex:none; flex-wrap:nowrap; gap:8px; padding:0; background:none; border:0; box-shadow:none; z-index:20}
+  h1{font-size:1.4rem}
+  body[data-at="caiet"] h1{display:none}
+  .label kbd{display:none}
   .tools{flex:1; min-width:0; flex-wrap:nowrap; gap:8px; justify-content:flex-end}
+  .etog{display:none}
+  .menubtn{display:grid; place-items:center; flex:none; width:44px; height:44px; background:var(--paper); border:1px solid var(--line); border-radius:6px;
+    font-size:1.3rem; cursor:pointer}
+  body.menu-open .menubtn{background:var(--cur-bg); border-color:var(--accent); color:var(--accent)}
+  /* The menu drops down under the ☰ button, over the page. */
+  .menu{display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; flex-direction:column; gap:0; padding:6px;
+    background:var(--paper); border:1px solid var(--line); border-radius:8px; box-shadow:0 10px 30px rgb(0 0 0 / .25)}
+  body.menu-open .menu{display:flex}
+  .menu a{min-height:56px; padding:8px 10px; gap:12px; color:var(--ink)}
+  .menu a i{width:32px; text-align:center; font-size:1.05rem; color:var(--accent)}
+  .menu a span{display:flex; flex-direction:column}
+  .menu a small{display:block; font-weight:400; color:var(--muted); font-size:.85rem}
+  .menu a[aria-current] small{color:var(--ink)}
   select{flex:1; min-width:0; width:0; padding:8px; min-height:44px}
   .run{padding:8px 14px; min-height:44px; white-space:nowrap}
   .grid,.side{display:contents}
+  [data-sec].on{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain}
+  .caiet.on{display:flex; flex-direction:column; overflow:hidden}
   [data-pane]{flex:1; min-height:0; overflow:auto; overscroll-behavior:contain}
   [data-pane]:not(.on){display:none}
   .panel[data-pane="cod"]{overflow:hidden}
   .editor{height:auto; flex:1; min-height:96px}
   .gutter{width:2.6em; padding-right:6px}
+  .enunt{position:static; max-height:none; margin-bottom:12px}
   .explain{flex:none; margin-top:0; min-height:0; max-height:7.2em; overflow:auto; padding:8px 10px}
   body.kb .explain, body.kb .tabs{display:none}
   .runbox{gap:12px}
@@ -329,12 +370,11 @@ button.link{background:none; border:0; padding:0; color:var(--accent); font-weig
   #sCode .ln{color:var(--muted); margin-right:10px}
   .intro{margin-bottom:12px; padding:12px; gap:10px}
   .intro h2{font-size:1.25rem}
-  #iHide{display:none}
   .dbody{grid-template-columns:minmax(0,1fr)}
   .dmem{gap:6px}
   .demo .stepbar button:not(.link){min-width:44px; min-height:44px}
   .qopts button{min-height:44px}
-  .help{flex:1; margin-bottom:12px}
+  .help{margin-bottom:12px}
   .probs{display:block; padding:12px; margin-bottom:12px}
   .probs.open .plist, .probs:not(.open) #pView{display:none}
   #pUl,#pView{max-height:none; overflow:visible}
