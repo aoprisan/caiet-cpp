@@ -4,7 +4,7 @@ import { compile, CppError, type RunResult, type Snapshot } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
 import { MASINI, masina, type Cadru, type Masina } from './masina.js';
-import { CAPITOLE, DIFICULTATI, blocuri, matches, note, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
+import { CAPITOLE, DIFICULTATI, blocuri, matches, note, pentruPbinfo, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const code = $<HTMLTextAreaElement>('code'), inp = $<HTMLTextAreaElement>('inp'), gutter = $('gutter'), outEl = $('out');
@@ -132,7 +132,7 @@ function load(v: string) {
   else if (isProb(v)) { code.value = store.get('caiet.' + v) || H + '    \n' + F; inp.value = store.get('caiet.' + v + '.in') ?? probOf(v)?.ex[0].in ?? '' }
   else { code.value = EX[+v].code; inp.value = EX[+v].inp }
   if (v === 'mine' || isProb(v)) store.set('caiet.doc', v);
-  badLine = 0; pRes.innerHTML = ''; drawGutter(); drawBar();
+  badLine = 0; pRes.innerHTML = ''; pSent.hidden = true; drawGutter(); drawBar();
 }
 function saveMine() {
   if (isProb(ex.value)) { store.set('caiet.' + ex.value, code.value); store.set('caiet.' + ex.value + '.in', inp.value); return }
@@ -481,7 +481,7 @@ showDemo(0);
 // ---- Problems from pbinfo (probleme/probleme.json, built by tools/probleme.mjs): list, statement, check on the examples.
 let probs: Problema[] = [], sel: Problema | undefined;
 const notes = new Map<Problema, ReturnType<typeof note>>();
-const probsEl = $('probs'), pUl = $('pUl'), pView = $('pView'), pRes = $('pRes'), pCount = $('pCount');
+const probsEl = $('probs'), pUl = $('pUl'), pView = $('pView'), pRes = $('pRes'), pCount = $('pCount'), pSent = $('pSent');
 const pQ = $<HTMLInputElement>('pQ'), pSub = $<HTMLSelectElement>('pSub'), pDif = $<HTMLSelectElement>('pDif'), pOk = $<HTMLInputElement>('pOk');
 const solved = new Set((store.get('caiet.rezolvate') || '').split(',').filter(Boolean).map(Number));
 function probOf(v: string) { return probs.find(p => 'p' + p.id === v) }
@@ -593,7 +593,7 @@ function drawBar() {
   drawEnunt();
   if (!on) return;
   $('pName').textContent = p ? p.nume : (ex.selectedOptions[0]?.text || '').replace('Problema: ', '');
-  $<HTMLButtonElement>('pCheck').disabled = !p;
+  $<HTMLButtonElement>('pCheck').disabled = $<HTMLButtonElement>('pSend').disabled = !p;
 }
 /** While a problem is in the editor its statement stays at hand: a column beside the code on a computer
  * (it can be hidden with „Enunțul”, remembered in caiet.enunt), the „Enunț” tab on a phone. */
@@ -637,11 +637,45 @@ function check() {
   if (rs.every(r => r.ok)) {
     solved.add(p.id); store.set('caiet.rezolvate', [...solved].join(','));
     const li = el('li', 'win', 'Bravo! Toate exemplele sunt corecte. Pe pbinfo.ro problema are și alte teste: ');
-    const a = el('a', '', 'trimite-o acolo'); a.href = url(p); a.target = '_blank'; a.rel = 'noopener';
-    li.append(a, '.'); pRes.append(li); list();
+    const b = el('button', 'link', 'trimite-o acolo'); b.type = 'button'; b.addEventListener('click', send);
+    li.append(b, '.'); pRes.append(li); list();
   }
 }
 $('pCheck').addEventListener('click', check);
+
+/** Sending to pbinfo.ro: the page cannot submit for the student (pbinfo has no way for another site to do it and
+ * the login stays on pbinfo), so it copies the program, adapted for pbinfo, and opens the problem there to paste it. */
+function send() {
+  const p = probOf(ex.value);
+  if (!p) return;
+  pSent.innerHTML = ''; pSent.hidden = false;
+  let rs: Rezultat[];
+  try { rs = verifica(code.value, p) } catch (e) {
+    if (!(e instanceof CppError)) throw e;
+    pSent.append(el('p', 'pwarn', 'Programul are o greșeală la linia ' + e.line + '. Repar-o înainte să-l trimiți: pbinfo nu l-ar putea compila.'));
+    return;
+  }
+  const { code: text, fis } = pentruPbinfo(code.value, p);
+  const shown = () => { // the clipboard is not allowed: the program to copy by hand
+    const ta = el('textarea'); ta.readOnly = true; ta.value = text; ta.setAttribute('aria-label', 'Programul pentru pbinfo');
+    ta.addEventListener('focus', () => ta.select());
+    const msg = pSent.querySelector('.pcopy')!;
+    msg.textContent = 'Am deschis problema pe pbinfo.ro, dar nu am putut copia singur programul. Selectează-l de aici și copiază-l (Ctrl+C):';
+    msg.after(ta);
+  };
+  // Runs after the message below is written (a promise, or a microtask when there is no clipboard at all).
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(shown); else queueMicrotask(shown);
+  window.open(url(p), '_blank', 'noopener');
+  const bad = rs.filter(r => !r.ok).length;
+  if (bad) pSent.append(el('p', 'pwarn', bad === rs.length ? 'Atenție: programul nu trece încă niciun exemplu. Pe pbinfo va lua probabil 0 puncte.' : 'Atenție: programul nu trece încă toate exemplele.'));
+  pSent.append(el('p', 'pcopy', 'Am copiat programul și am deschis problema pe pbinfo.ro. Acolo:'));
+  const ol = el('ol');
+  for (const s of ['Intră în contul tău de pbinfo, dacă nu ești deja.', 'Coboară sub enunț, unde se trimite soluția, și alege limbajul C++.',
+    'Lipește programul în căsuța de cod (Ctrl+V; pe telefon ține apăsat și alege „Lipire”).', 'Apasă butonul de trimis și așteaptă punctajul.']) ol.append(el('li', '', s));
+  pSent.append(ol);
+  if (fis) pSent.append(el('p', '', 'Pe pbinfo programul citește din ' + p.fis + '.in și scrie în ' + p.fis + '.out, așa că am adăugat două rânduri la începutul lui main: ifstream cin(…) și ofstream cout(…). Restul programului e la fel.'));
+}
+$('pSend').addEventListener('click', send);
 for (const e of [pQ, pSub, pDif, pOk]) e.addEventListener('input', list);
 CAPITOLE.forEach((c, i) => pSub.add(new Option(c, String(i))));
 DIFICULTATI.forEach((d, i) => pDif.add(new Option(d[0].toUpperCase() + d.slice(1), String(i))));

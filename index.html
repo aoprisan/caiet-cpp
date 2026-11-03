@@ -128,8 +128,12 @@
       <div class="runbox" data-pane="rulare">
         <div class="pbar" id="pBar" hidden>
           <div class="pbar-h"><span>Problema <b id="pName"></b></span></div>
-          <button type="button" class="check" id="pCheck">✓ Verifică pe exemple</button>
+          <div class="pacts">
+            <button type="button" class="check" id="pCheck">✓ Verifică pe exemple</button>
+            <button type="button" class="pbtn" id="pSend" title="Copiază programul și deschide problema pe pbinfo.ro, ca să-l trimiți acolo">⇪ Trimite pe pbinfo</button>
+          </div>
           <ul id="pRes" aria-live="polite"></ul>
+          <div id="pSent" class="psent" aria-live="polite" hidden></div>
         </div>
         <div class="panel">
           <label class="label" for="inp">Date de intrare (ce citește cin)</label>

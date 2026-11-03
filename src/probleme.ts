@@ -65,6 +65,19 @@ export function verifica(src: string, p: Problema): Rezultat[] {
   });
 }
 
+/** The program as it should be sent to pbinfo.ro. When the problem reads from files, two lines in main make
+ * cin and cout the files (they hide the keyboard and screen ones), so the rest of the program stays the same. */
+export function pentruPbinfo(src: string, p: Problema): { code: string; fis: boolean } {
+  if (!p.fis) return { code: src, fis: false };
+  const main = /\bint\s+main\s*\(\s*\)\s*\{/.exec(src);
+  if (!main) return { code: src, fis: false };
+  const at = main.index + main[0].length;
+  const files = '\n    ifstream cin("' + p.fis + '.in");\n    ofstream cout("' + p.fis + '.out");';
+  let code = src.slice(0, at) + files + src.slice(at);
+  if (!/#include\s*<fstream>/.test(code)) code = code.replace(/(#include\s*<iostream>[^\n]*)/, '$1\n#include <fstream>');
+  return { code, fis: true };
+}
+
 /** A statement split into blocks: paragraphs (lines kept) and "- " lists. */
 export type Bloc = { p: string } | { li: string[] };
 export function blocuri(s: string): Bloc[] {
