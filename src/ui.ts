@@ -262,6 +262,37 @@ function tab(name: string) {
   if (name === 'cod' && (curLine || badLine)) { reveal(curLine || badLine); sync() }
 }
 tabs.forEach(b => b.addEventListener('click', () => tab(b.dataset.tab!)));
+// On a phone a swipe left or right moves to the next or previous part (like the tabs), unless the finger was
+// scrolling something sideways (a long line of code, the stack) or the keyboard is open.
+let sw: { x: number, y: number, t: number, left: boolean, right: boolean } | null = null;
+const caietSec = document.querySelector<HTMLElement>('[data-sec="caiet"]')!;
+caietSec.addEventListener('touchstart', e => {
+  sw = null;
+  if (!MOBILE.matches || e.touches.length !== 1 || document.body.classList.contains('kb')) return;
+  const t = e.touches[0];
+  let left = false, right = false; // can something under the finger still scroll that way?
+  for (let el = e.target as HTMLElement | null; el && el !== caietSec; el = el.parentElement) {
+    if (el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(el).overflowX)) {
+      if (el.scrollLeft > 1) left = true;
+      if (el.scrollLeft + el.clientWidth < el.scrollWidth - 1) right = true;
+    }
+  }
+  sw = { x: t.clientX, y: t.clientY, t: e.timeStamp, left, right };
+}, { passive: true });
+caietSec.addEventListener('touchend', e => {
+  const s = sw; sw = null;
+  if (!s || e.changedTouches.length !== 1 || e.timeStamp - s.t > 700) return;
+  const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y;
+  if (Math.abs(dx) < 60 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+  if (dx < 0 ? s.right : s.left) return;
+  const shown = tabs.filter(b => !b.hidden).map(b => b.dataset.tab!), i = shown.indexOf(paneNow) + (dx < 0 ? 1 : -1);
+  if (i < 0 || i >= shown.length) return;
+  tab(shown[i]);
+  const p = panes.find(p => p.dataset.pane === shown[i]);
+  if (p) { p.classList.remove('slideL', 'slideR'); void p.offsetWidth; p.classList.add(dx < 0 ? 'slideL' : 'slideR') }
+}, { passive: true });
+caietSec.addEventListener('touchcancel', () => { sw = null });
+panes.forEach(p => p.addEventListener('animationend', () => p.classList.remove('slideL', 'slideR')));
 follow.addEventListener('click', () => { tab('pasi'); showStep(0) });
 
 // The page is sized to the visible part of the screen, so the editor ends right above the keyboard.
