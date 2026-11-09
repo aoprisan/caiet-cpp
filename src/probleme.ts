@@ -13,7 +13,7 @@ export const CAPITOLE = ['Operatori și expresii', 'Structura de decizie', 'Stru
 export const DIFICULTATI = ['ușoară', 'medie', 'dificilă', 'concurs'];
 export const url = (p: Problema) => 'https://www.pbinfo.ro/probleme/' + p.id + '/' + p.slug;
 
-const INTMAX = 2147483647;
+const INTMAX = 2147483647, LLMAX = 9223372036854775807n;
 const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 /** The largest number written in a text, reading 1.000.000 as a million and 10⁹ as a power of ten. */
 function biggest(s: string): number {
@@ -24,17 +24,22 @@ function biggest(s: string): number {
   return m;
 }
 
-/** Why a problem may not work in the notebook. `stop` is set when the examples themselves cannot be solved with int. */
+/** Why a problem may not work in the notebook, or needs long long. `stop` is set when the examples themselves cannot be solved here. */
 export function note(p: Problema): { text: string[]; stop: boolean } {
   const text: string[] = [];
   let stop = false;
   const ins = p.ex.map(e => e.in).join(' '), outs = p.ex.map(e => e.out).join(' ');
+  const nums = [...(ins + ' ' + outs).matchAll(/\d+/g)].map(([w]) => BigInt(w));
   if (ins.split(/\s+/).some(w => w && !/^[+-]?\d+$/.test(w)) || /\d[.,]\d/.test(outs)) {
     text.push('Exemplele folosesc numere cu virgulă sau caractere, pe care caietul nu le are. Problema nu se poate rezolva aici.'); stop = true;
-  } else if ([...(ins + ' ' + outs).matchAll(/\d+/g)].some(([w]) => Number(w) > INTMAX)) {
-    text.push('Exemplele au numere prea mari pentru int (peste 2147483647). Problema nu se poate rezolva aici.'); stop = true;
+  } else if (nums.some(n => n > LLMAX)) {
+    text.push('Exemplele au numere prea mari chiar și pentru long long (peste 9223372036854775807). Problema nu se poate rezolva aici.'); stop = true;
+  } else if (nums.some(n => n > INTMAX)) {
+    text.push('Exemplele au numere prea mari pentru int (peste 2147483647). Folosește long long pentru ele.');
+  } else if (biggest(p.restrictii) > Number(LLMAX)) {
+    text.push('Restricțiile permit numere mai mari decât încap chiar și într-un long long. Aici poți verifica doar exemplele.');
   } else if (biggest(p.restrictii) > INTMAX) {
-    text.push('Restricțiile permit numere mai mari decât încap într-un int. Aici poți verifica doar exemplele.');
+    text.push('Restricțiile permit numere mai mari decât încap într-un int. Folosește long long.');
   }
   if (p.fis) text.push('Pe pbinfo programul citește din fișierul ' + p.fis + '.in și scrie în ' + p.fis + '.out. Aici folosește cin și cout.');
   return { text, stop };
