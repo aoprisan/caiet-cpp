@@ -1,6 +1,6 @@
 // Page wiring: section menu, intro (processor and memory), editor, highlighting, run, step-through stack view,
 // machine view (CPU, memory, buses), examples, pbinfo problems (with the statement beside the editor while solving one).
-import { compile, CppError, type RunResult, type Snapshot } from './interp.js';
+import { compile, CppError, type RunResult, type Snapshot, type Val } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
 import { MASINI, masina, type Cadru, type Masina } from './masina.js';
@@ -24,6 +24,8 @@ const EX: { name: string; inp: string; code: string }[] = [
   { name: 'Suma cifrelor', inp: '2026', code: H + '    int n, suma = 0;\n    cin >> n;\n    while (n > 0) {\n        suma = suma + n % 10;   // ultima cifră\n        n = n / 10;             // tăiem ultima cifră\n    }\n    cout << suma << endl;\n' + F },
   { name: 'Este număr prim?', inp: '97', code: H + '    int n, divizori = 0;\n    cin >> n;\n    for (int d = 1; d <= n; d++) {\n        if (n % d == 0) {\n            divizori++;\n        }\n    }\n    if (divizori == 2) {\n        cout << n << " este prim" << endl;\n    } else {\n        cout << n << " nu este prim" << endl;\n    }\n' + F },
   { name: 'Cel mai mare divizor comun', inp: '84 36', code: H + '    int a, b, r;\n    cin >> a >> b;\n    while (b != 0) {\n        r = a % b;\n        a = b;\n        b = r;\n    }\n    cout << "cmmdc = " << a << endl;\n' + F },
+  { name: 'O funcție: este prim?', inp: '97', code: '#include <iostream>\nusing namespace std;\n\nint prim(int n) {\n    if (n < 2) {\n        return 0;\n    }\n    for (int d = 2; d * d <= n; d++) {\n        if (n % d == 0) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main() {\n    int n;\n    cin >> n;\n    if (prim(n)) {\n        cout << n << " este prim" << endl;\n    } else {\n        cout << n << " nu este prim" << endl;\n    }\n' + F },
+  { name: 'Factorial cu long long', inp: '20', code: '#include <iostream>\nusing namespace std;\n\nlong long factorial(int n) {\n    if (n <= 1) {\n        return 1;\n    }\n    return n * factorial(n - 1);   // funcția se apelează pe ea însăși\n}\n\nint main() {\n    int n;\n    cin >> n;\n    cout << n << "! = " << factorial(n) << endl;\n' + F },
   { name: 'Tabla înmulțirii', inp: '7', code: H + '    int n;\n    cin >> n;\n    for (int i = 1; i <= 10; i++) {\n        cout << n << " x " << i << " = " << n * i << endl;\n    }\n' + F },
 ];
 const store = {
@@ -38,7 +40,7 @@ const keys = $('keys'), follow = $('follow'), sCode = $('sCode');
 const hl = $('hl'), band = $('band'), layer = $('layer'), range = $<HTMLInputElement>('sRange'), sLabel = $('sLabel'), stackEl = $('stack');
 let badLine = 0, curLine = 0, lines = 0, steps: Snapshot[] = [], cur = 0, fullOut = '', lastErr: CppError | null = null, cut = false;
 
-const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|if|else|while|for|do|return|break|continue|using|namespace|nullptr)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
+const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|long|void|if|else|while|for|do|return|break|continue|using|namespace|nullptr)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
 const CLS = ['com', 'str', 'pre', 'num', 'kw', 'io'];
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function paint(src: string): string {
@@ -81,8 +83,9 @@ code.addEventListener('click', drawExplain);
 // Phones move the caret by long-press and drag, which fires neither keyup nor click.
 document.addEventListener('selectionchange', () => { if (document.activeElement === code && !curLine) drawExplain() });
 
-/** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step), what a pointer points to. */
-type Cell = [name: string, value: number | undefined, global: boolean, idx: number, to?: string];
+/** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step), what a pointer points to,
+ * the function call it belongs to. */
+type Cell = [name: string, value: Val | undefined, global: boolean, idx: number, to: string | undefined, call: number | undefined];
 function frame(title: string, vars: Cell[], prev: Snapshot | undefined, from: boolean): HTMLElement {
   const f = document.createElement('div'); f.className = 'frame';
   const h = document.createElement('h3'); h.textContent = title; f.append(h);
@@ -114,8 +117,10 @@ function showStep(i: number) {
     + (cut ? ' Programul are mulți pași, se pot urmări doar primii 2000.' : '');
   stackEl.innerHTML = '';
   if (s) {
-    const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k, v[3]]);
-    stackEl.append(frame('main()', all.filter(v => !v[2]), prev, cur > 0));
+    const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k, v[3], v[4]]);
+    // One frame per function call, the one running now on top, main at the bottom.
+    const calls = s.calls.length ? s.calls : ['main'];
+    for (let k = calls.length - 1; k >= 0; k--) stackEl.append(frame(calls[k] + '()', all.filter(v => !v[2] && (v[5] ?? 0) === k), prev, cur > 0));
     const g = all.filter(v => v[2]);
     if (g.length) stackEl.append(frame('variabile globale', g, prev, cur > 0));
   }
@@ -323,7 +328,7 @@ const KEYS: { l: string; t?: string; a?: () => void; c?: string; title?: string 
   { l: '=', t: '=' }, { l: '==', t: ' == ' }, { l: '!=', t: ' != ' }, { l: '<', t: '<' }, { l: '>', t: '>' },
   { l: '+', t: '+' }, { l: '-', t: '-' }, { l: '*', t: '*' }, { l: '/', t: '/' }, { l: '%', t: '%' },
   { l: '&&', t: ' && ' }, { l: '||', t: ' || ' }, { l: '!', t: '!' }, { l: '&', t: '&' },
-  { l: 'int', t: 'int |;', c: 'w' }, { l: 'cin', t: 'cin >> |;', c: 'w' }, { l: 'cout', t: 'cout << | << endl;', c: 'w' },
+  { l: 'int', t: 'int |;', c: 'w' }, { l: 'long long', t: 'long long |;', c: 'w' }, { l: 'cin', t: 'cin >> |;', c: 'w' }, { l: 'cout', t: 'cout << | << endl;', c: 'w' },
   { l: 'endl', t: 'endl', c: 'w' }, { l: 'if', t: 'if (|) {\n    \n}', c: 'w' }, { l: 'else', t: ' else {\n    |\n}', c: 'w' },
   { l: 'for', t: 'for (int i = 1; i <= |; i++) {\n    \n}', c: 'w' }, { l: 'while', t: 'while (|) {\n    \n}', c: 'w' },
   { l: '↶', c: 'a', title: 'Anulează', a: () => { code.focus(); document.execCommand('undo') } },
@@ -409,7 +414,7 @@ function mShow(i: number) {
   const at = mProg.children[c.line - 1] as HTMLElement | undefined;
   if (at && (at.offsetTop < mProg.scrollTop || at.offsetTop + at.offsetHeight > mProg.scrollTop + mProg.clientHeight)) mProg.scrollTop = at.offsetTop - mProg.clientHeight / 2;
   mData.innerHTML = '';
-  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)].sort((a, b) => a[0].slot - b[0].slot);
+  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)].sort((a, b) => a[0].at - b[0].at);
   for (const [m, f] of all) mData.append(cell(c, m, f));
   if (!all.length) mData.append(el('p', 'none', 'Nicio cutie folosită încă.'));
   // Keyboard and screen

@@ -238,14 +238,15 @@
   <section class="help" data-sec="ajutor">
     <h2>Ce poți folosi</h2>
     <dl>
-      <div><dt>Variabile</dt><dd>int a, b = 5;</dd></div>
+      <div><dt>Variabile</dt><dd>int a, b = 5;<br>long long x = 1870413123455;</dd></div>
       <div><dt>Citire și afișare</dt><dd>cin &gt;&gt; a &gt;&gt; b;<br>cout &lt;&lt; "Suma: " &lt;&lt; a + b &lt;&lt; endl;</dd></div>
       <div><dt>Calcule</dt><dd>+ &nbsp;- &nbsp;* &nbsp;/ &nbsp;% &nbsp;++ &nbsp;-- &nbsp;+= &nbsp;-= &nbsp;*= &nbsp;/= &nbsp;%=</dd></div>
       <div><dt>Comparații și logică</dt><dd>== &nbsp;!= &nbsp;&lt; &nbsp;&lt;= &nbsp;&gt; &nbsp;&gt;= &nbsp;&amp;&amp; &nbsp;|| &nbsp;!</dd></div>
       <div><dt>Decizii</dt><dd>if (a &gt; b) { ... } else { ... }</dd></div>
       <div><dt>Repetiții</dt><dd>while (n &gt; 0) { ... }<br>for (int i = 1; i &lt;= n; i++) { ... }<br>do { ... } while (n &gt; 0);<br>break; &nbsp;continue;</dd></div>
+      <div><dt>Funcții</dt><dd>int suma(int a, int b) { return a + b; }<br>void schimba(int *a, int *b) { ... }<br>(scrise deasupra lui main)</dd></div>
     </dl>
-    <p>Aici lucrăm doar cu numere întregi (int). Împărțirea <code>/</code> dă câtul, iar <code>%</code> dă restul. Numerele cu virgulă, caracterele, șirurile, vectorii și funcțiile proprii nu sunt disponibile.</p>
+    <p>Aici lucrăm doar cu numere întregi: <code>int</code> (până la 2147483647) și <code>long long</code>, pentru numere mai mari (până la 9223372036854775807). Ca un calcul cu int să nu iasă din int, scrie <code>(long long)a * b</code> sau <code>1LL * a * b</code>. Împărțirea <code>/</code> dă câtul, iar <code>%</code> dă restul. Numerele cu virgulă, caracterele, șirurile, vectorii, referințele (<code>int &amp;</code>) și funcțiile din biblioteci (<code>sqrt</code>, <code>max</code>…) nu sunt disponibile.</p>
   </section>
 
   <nav class="tabs" id="tabs" aria-label="Părțile caietului de lucru">

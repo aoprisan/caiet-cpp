@@ -1,6 +1,6 @@
 // The machine view: what goes through the processor, the memory and the buses between them while a program runs.
 // Turns the interpreter's bus events into frames with Romanian sentences. Data only, no DOM.
-import { adresa, compile, CppError, type Box, type BusStep } from './interp.js';
+import { adresa, compile, CppError, type Box, type BusStep, type Val } from './interp.js';
 
 const H = '#include <iostream>\nusing namespace std;\n\nint main() {\n', F = '    return 0;\n}\n';
 const prog = (lines: string[]) => H + lines.map(l => '    ' + l + '\n').join('') + F;
@@ -11,10 +11,14 @@ export const MASINI: { name: string; code: string; inp: string }[] = [
   { name: 'Atribuiri', inp: '', code: prog(['int a = 5;', 'int b = a + 2;', 'a = a * b;', 'cout << a;']) },
   { name: 'O repetiție', inp: '', code: prog(['int s = 0;', 'for (int i = 1; i <= 3; i++) {', '    s = s + i;', '}', 'cout << s;']) },
   { name: 'Pointerul', inp: '', code: prog(['int a = 5;', 'int *p = &a;', '*p = *p + 1;', 'cout << a;']) },
+  {
+    name: 'O funcție', inp: '',
+    code: H.replace('int main() {\n', 'int dublu(int x) {\n    return 2 * x;\n}\n\nint main() {\n') + '    int a = dublu(5);\n    cout << a;\n' + F,
+  },
 ];
 
-/** A box of memory as drawn: its address, name, value as text (a pointer shows an address). */
-export interface Celula { slot: number; adr: string; name: string; val: string; gol: boolean; ptr: boolean }
+/** A box of memory as drawn: its address (and place on the stack, `at`), name, value as text (a pointer shows an address). */
+export interface Celula { slot: number; at: number; adr: string; name: string; val: string; gol: boolean; ptr: boolean }
 /**
  * One frame of the machine view. `adr`, `cmd` and `date` are what the address, control and data buses carry
  * (`spre` says where the data goes); `io` is a trip between the processor and the keyboard (`in`) or the screen (`out`).
@@ -53,8 +57,8 @@ export function masina(src: string, input: string): Masina {
   const seen = new Map<number, Box>();
   /** The address of box `slot`: the same made-up address cout shows for a pointer to it. */
   const adr = (slot: number) => adresa(seen.get(slot)![4]);
-  const val = (v: number | undefined, ptr: boolean) => v === undefined ? 'goală' : ptr ? (v === 0 ? 'nullptr' : adr(v - 1)) : String(v);
-  const celula = ([slot, name, v, ptr]: Box): Celula => ({ slot, adr: adr(slot), name, val: val(v, ptr), gol: v === undefined, ptr });
+  const val = (v: Val | undefined, ptr: boolean) => v === undefined ? 'goală' : ptr ? (v === 0 ? 'nullptr' : adr(Number(v) - 1)) : String(v);
+  const celula = ([slot, name, v, ptr, at]: Box): Celula => ({ slot, at, adr: adr(slot), name, val: val(v, ptr), gol: v === undefined, ptr });
   steps.forEach((st, i) => {
     for (const b of st.mem) seen.set(b[0], b);
     const e = st.e, mem = st.mem.map(celula), box = (s: number) => st.mem.find(b => b[0] === s) || seen.get(s);
@@ -81,19 +85,19 @@ export function masina(src: string, input: string): Masina {
         const b = box(e.slot)!, v = val(e.v, b[3]);
         c.adr = adr(e.slot); c.cmd = 'citește'; c.date = v; c.spre = 'cpu'; c.cell = e.slot; c.reg = reg = v;
         c.say = 'Procesorul are nevoie de ' + b[1] + '. Trimite adresa ' + adr(e.slot) + ' și comanda „citește”. Memoria îi răspunde cu '
-          + v + (b[3] && e.v ? ', adresa cutiei ' + target(e.v - 1) : '') + '.';
+          + v + (b[3] && e.v ? ', adresa cutiei ' + target(Number(e.v) - 1) : '') + '.';
         break;
       }
       case 'write': {
         const b = box(e.slot)!, v = val(e.v, b[3]), old = prev.find(x => x[0] === e.slot)?.[2];
         c.adr = adr(e.slot); c.cmd = 'scrie'; c.date = v; c.spre = 'mem'; c.cell = e.slot; c.reg = reg = v;
         c.say = 'Procesorul pune ' + v + ' în ' + b[1] + ': trimite adresa ' + adr(e.slot) + ', comanda „scrie” și, pe magistrala de date, '
-          + (b[3] ? 'adresa ' + v + (e.v ? ' (a lui ' + target(e.v - 1) + ')' : '') : 'numărul ' + v) + '.'
+          + (b[3] ? 'adresa ' + v + (e.v ? ' (a lui ' + target(Number(e.v) - 1) + ')' : '') : 'numărul ' + v) + '.'
           + (old !== undefined && old !== e.v ? ' Ce era înainte în cutie, ' + val(old, b[3]) + ', se pierde.' : '');
         break;
       }
       case 'alu': {
-        const f = (x: number) => e.ptr ? val(x, true) : String(x);
+        const f = (x: Val) => e.ptr ? val(x, true) : String(x);
         c.reg = reg = String(e.r);
         if (e.op === '-' && e.y === undefined) { c.ual = '-(' + e.x + ') = ' + e.r; c.say = 'Unitatea de calcul (UAL) din procesor schimbă semnul: ' + c.ual + '.'; break }
         if (e.op === '!') { c.ual = '!' + e.x + ' = ' + e.r; c.say = 'UAL face „nu” (!): ' + c.ual + '. Ce era adevărat devine fals și invers.'; break }
@@ -118,8 +122,21 @@ export function masina(src: string, input: string): Masina {
         c.io = 'out'; c.ioText = e.s === '\n' ? '↵' : e.s;
         c.say = 'cout: procesorul trimite la ecran ' + text(e.s) + '.' + (e.s === '\n' ? ' Ce se afișează de acum apare pe rândul următor.' : '');
         break;
+      case 'call':
+        c.say = 'Apel de funcție: procesorul sare la funcția ' + e.name + ', de la linia ' + e.line + '. '
+          + (e.n ? 'Pe stivă, deasupra cutiilor de până acum, se pun cutii noi pentru parametrii ei, care primesc valorile trimise la apel.' : 'Funcția nu are parametri.');
+        break;
+      case 'ret':
+        c.reg = reg = String(e.v);
+        c.say = 'Funcția ' + e.name + ' întoarce valoarea ' + e.v + '. Procesorul o ține minte și se întoarce la locul de unde a fost apelată funcția.';
+        break;
       case 'free':
         c.freed = e.slots.map(s => celula(box(s)!));
+        if (e.fn) {
+          c.say = 'Funcția ' + e.fn + ' s-a terminat: ' + (e.slots.length > 1 ? 'cutiile ei, ' + e.slots.map(name).join(', ') + ', sunt eliberate' : 'cutia lui ' + name(e.slots[0]) + ' este eliberată')
+            + '. Locul lor de pe stivă poate fi refolosit.';
+          break;
+        }
         c.say = !st.mem.length && i === steps.length - 1
           ? 'La „}” se termină main, deci și programul: toate cutiile sunt eliberate.'
           : 'La „}” se termină blocul. ' + (e.slots.length > 1 ? 'Cutiile ' + e.slots.map(name).join(', ') + ' sunt eliberate' : 'Cutia lui ' + name(e.slots[0]) + ' este eliberată')

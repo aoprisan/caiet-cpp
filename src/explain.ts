@@ -4,6 +4,13 @@ const W: Record<string, string> = {
   '==': ' este egal cu ', '!=': ' este diferit de ', '<=': ' este cel mult ', '>=': ' este cel puțin ',
   '<': ' este mai mic decât ', '>': ' este mai mare decât ', '&&': ' și ', '||': ' sau ', '!': ' nu ',
 };
+/** Words followed by „(” that are not function calls. */
+const NOCALL = new Set(['if', 'while', 'for', 'switch', 'return', 'main', 'int', 'long', 'void', 'sizeof']);
+/** A function's header: type, name, parameters. */
+const HEAD = /^(int|long\s+long(?:\s+int)?|void)\s+(\w+)\s*\(([^)]*)\)$/;
+const tip = (t: string) => t === 'int' ? 'int' : 'long long';
+/** The names of a header's parameters. */
+const params = (s: string) => split(s, ',').map(x => x.trim()).filter(x => x && x !== 'void').map(x => (/(\w+)$/.exec(x) || ['', x])[1]);
 const cond = (c: string) => c.replace(/==|!=|<=|>=|&&|\|\||<|>|!/g, m => W[m]).replace(/\s+/g, ' ').trim();
 
 /** Drops a trailing // comment, leaving string and char literals alone. */
@@ -55,10 +62,23 @@ function simple(st: string): string {
   if (!st) return '';
   if (/^using\s+namespace\s+std$/.test(st)) return 'Ne lasă să scriem cin, cout și endl pe scurt, fără „std::” în față.';
   if (/^int\s+main\s*\(/.test(st)) return 'De aici începe programul. Instrucțiunile dintre acoladele lui main se execută pe rând, de sus în jos.';
-  if (/^return\b/.test(st)) return 'Programul se încheie aici. Valoarea 0 înseamnă „totul a mers bine”.';
-  if ((m = /^int\s+(.+)$/.exec(st))) {
+  if ((m = HEAD.exec(st))) {
+    const ps = params(m[3]);
+    return 'Aici este scrisă funcția ' + m[2] + '. ' + (ps.length
+      ? 'Primește ' + (ps.length > 1 ? 'parametrii ' + ps.join(', ') + ': cutii care primesc' : 'parametrul ' + ps[0] + ': o cutie care primește') + ' valorile trimise la apel.'
+      : 'Nu primește nimic.') + ' ' + (m[1] === 'void' ? 'Nu întoarce nicio valoare (void).' : 'La sfârșit întoarce, cu return, un număr ' + tip(m[1]) + '.')
+      + ' Instrucțiunile ei se execută doar când funcția este apelată.';
+  }
+  if ((m = /^return\b\s*(.*)$/.exec(st))) {
+    const v = m[1].trim();
+    if (!v) return 'Funcția se oprește aici și se întoarce la locul de unde a fost apelată.';
+    if (v === '0') return 'În main, programul se încheie aici. Valoarea 0 înseamnă „totul a mers bine”.';
+    return 'Funcția se oprește aici și întoarce ' + (/^\w+$/.test(v) ? 'valoarea lui ' + v : 'rezultatul calculului ' + v) + ': o dă înapoi locului de unde a fost apelată.';
+  }
+  if ((m = /^(int|long\s+long(?:\s+int)?)\s+(.+)$/.exec(st))) {
+    const what = m[1] === 'int' ? 'un număr întreg' : 'un număr întreg mare, de tip long long';
     const names: string[] = [], ptrs: string[] = [], inits: string[] = [];
-    for (const d of split(m[1], ',')) {
+    for (const d of split(m[2], ',')) {
       const k = /^\s*(\*?)\s*(\w+)\s*(?:=\s*(.+))?$/.exec(d);
       if (!k) continue;
       (k[1] ? ptrs : names).push(k[2]);
@@ -67,8 +87,8 @@ function simple(st: string): string {
     if (!names.length && !ptrs.length) return 'Creează variabile pentru numere întregi.';
     const made: string[] = [];
     if (names.length) made.push(names.length > 1
-      ? 'Creează variabilele ' + names.join(', ') + ' (cutii în memorie, fiecare pentru un număr întreg).'
-      : 'Creează variabila ' + names[0] + ' (o cutie în memorie pentru un număr întreg).');
+      ? 'Creează variabilele ' + names.join(', ') + ' (cutii în memorie, fiecare pentru ' + what + ').'
+      : 'Creează variabila ' + names[0] + ' (o cutie în memorie pentru ' + what + ').');
     if (ptrs.length) made.push(ptrs.length > 1
       ? 'Creează pointerii ' + ptrs.join(', ') + ' (cutii care țin adresa altor cutii).'
       : 'Creează pointerul ' + ptrs[0] + ' (o cutie care ține adresa altei cutii).');
@@ -109,6 +129,8 @@ function simple(st: string): string {
   }
   if ((m = /^(\w+)\s*=\s*(&\s*\w+|nullptr)$/.exec(st))) return m[1] + ' ' + ptrInit(m[2]).replace('pornește cu', 'primește') + '.';
   if ((m = /^\*\s*(\w+)\s*=(?!=)\s*(.+)$/.exec(st))) return 'Calculează ' + m[2] + ' și pune rezultatul în cutia spre care arată ' + m[1] + ' (nu în ' + m[1] + ').';
+  if ((m = /^(\w+)\s*\((.*)\)$/.exec(st)) && !NOCALL.has(m[1]))
+    return 'Apelează funcția ' + m[1] + (m[2].trim() ? ' cu ' + m[2].trim() : '') + ': programul sare la instrucțiunile ei, iar când ea se termină, revine aici.';
   if ((m = /^(\w+)\s*=(?!=)\s*(.+)$/.exec(st))) return 'Calculează ' + m[2] + ' și pune rezultatul în ' + m[1] + '. Semnul = înseamnă „primește”, nu „este egal”.';
   return 'Calculează expresia ' + st + '.';
 }
@@ -118,6 +140,8 @@ function parts(s: string): string[] {
   if ((m = /^\}\s*while\s*(\(.*)$/.exec(s))) return ['Sfârșitul repetiției „do”. Dacă ' + cond(paren(m[1])[0]) + ', se repetă din nou de la „do”; altfel programul merge mai departe.'];
   if (s[0] === '}') return ['Aici se închide blocul deschis mai sus cu „{”. Variabilele declarate în el sunt scoase de pe stivă.'].concat(parts(s.slice(1)));
   if (s[0] === '{') return parts(s.slice(1));
+  if ((m = /^(.*\))\s*;$/.exec(s)) && (m = HEAD.exec(m[1].trim())) && m[2] !== 'main')
+    return ['Anunță funcția ' + m[2] + ' (doar antetul ei), ca să poată fi folosită mai jos. Instrucțiunile ei sunt scrise mai departe în program.'];
   if ((m = /^(if|while|for)\s*(\(.*)$/.exec(s))) {
     const [c, rest] = paren(m[2]); let t: string;
     if (m[1] === 'if') t = 'Verifică dacă ' + cond(c) + '. Dacă da, se execută instrucțiunile care urmează; dacă nu, sunt sărite.';
@@ -144,6 +168,10 @@ export function explain(raw: string): string[] {
   if (!list.length) list.push('Nu știu să explic linia aceasta.');
   if (/(?:^|[=(,<>!&|+\-/%*])\s*\*\s*[A-Za-z_]/.test(bare)) list.push('Semnul * în fața unui pointer înseamnă „cutia spre care arată”: *p este cutia spre care arată p.');
   if (/(?<!&)&(?!&)\s*[A-Za-z_]/.test(bare)) list.push('Semnul & în fața unei variabile înseamnă „adresa ei”: &a este numărul cutiei lui a.');
+  const head = HEAD.test(code.trim().replace(/[{;]\s*$/, '').trim()), call = [...bare.matchAll(/\b([A-Za-z_]\w*)\s*\(/g)].map(m => m[1]).find(n => !NOCALL.has(n));
+  if (call && !head && !/^\w+\s*\(.*\)\s*;?$/.test(code.trim()))
+    list.push(call + '(...) este un apel de funcție: funcția ' + call + ' se execută, iar valoarea întoarsă de ea se folosește aici.');
+  if (/\(\s*long\s+long\s*\)|\d(?:LL|ll)\b/.test(bare)) list.push('(long long) în fața unui calcul, sau 1LL, face calculul cu numere mari, ca rezultatul să nu iasă din int.');
   if (bare.includes('%')) list.push('Semnul % dă restul împărțirii: 17 % 5 este 2.');
   if (bare.includes('/')) list.push('Semnul / dă câtul împărțirii întregi, fără rest: 17 / 5 este 3.');
   if (code.length < raw.trimEnd().length) list.push('Textul de după // este un comentariu, pe care calculatorul îl ignoră.');

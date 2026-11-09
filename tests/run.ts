@@ -108,7 +108,10 @@ t('probleme: notes for what int cannot do', () => {
   assert.deepEqual(note(P({})), { text: [], stop: false });
   assert.ok(note(P({ ex: [{ in: '2.5', out: '5' }] })).stop);
   assert.ok(note(P({ ex: [{ in: '4\n*', out: '****' }] })).stop);
-  assert.ok(note(P({ ex: [{ in: '1870413123455', out: 'Major' }] })).stop);
+  const cnp = note(P({ ex: [{ in: '1870413123455', out: 'Major' }] }));
+  assert.ok(!cnp.stop); assert.match(cnp.text[0], /long long/);
+  assert.ok(note(P({ ex: [{ in: '99999999999999999999', out: '1' }] })).stop);
+  assert.match(note(P({ restrictii: '- 1 ≤ n ≤ 10²⁰' })).text[0], /chiar și într-un long long/);
   const big = note(P({ restrictii: '- 1 ≤ n ≤ 10¹⁰' }));
   assert.ok(!big.stop && big.text.length === 1);
   assert.equal(note(P({ restrictii: '- 1 ≤ n < 1.000.000.000' })).text.length, 0);
@@ -187,7 +190,7 @@ t('bus: recording does not change what a program does', () => {
 t('bus: fetch, box, read, calculate, write, cin, cout, free', () => {
   const r = compile(H + 'int a;\ncin >> a;\nint b = a * 2;\nif (b > 3) {\nint c = b;\ncout << c;\n}' + F, { bus: true }).run('5');
   const k = r.bus.map(s => s.e.k === 'fetch' ? 'F' + s.e.line : s.e.k === 'read' || s.e.k === 'write' ? s.e.k + ':' + s.e.slot + '=' + s.e.v
-    : s.e.k === 'alu' ? s.e.x + s.e.op + s.e.y + '=' + s.e.r : s.e.k === 'free' ? 'free:' + s.e.slots : s.e.k === 'decl' ? 'decl:' + s.e.slot : s.e.k + ':' + ('v' in s.e ? s.e.v : s.e.s));
+    : s.e.k === 'alu' ? s.e.x + s.e.op + s.e.y + '=' + s.e.r : s.e.k === 'free' ? 'free:' + s.e.slots : s.e.k === 'decl' ? 'decl:' + s.e.slot : s.e.k + ':' + ('v' in s.e ? s.e.v : 's' in s.e ? s.e.s : s.e.k));
   assert.deepEqual(k, ['F4', 'decl:0', 'F5', 'in:5', 'write:0=5', 'F6', 'decl:1', 'read:0=5', '5*2=10', 'write:1=10', 'F7', 'read:1=10', '10>3=1',
     'F8', 'decl:2', 'read:1=10', 'write:2=10', 'F9', 'read:2=10', 'out:10', 'free:2', 'F11', 'free:1,0']);
   // Memory as it is right after each event: the box exists (empty) at its decl, gets its value at the write.
@@ -232,5 +235,87 @@ t('masina: pointers, blocks, errors', () => {
   assert.equal(e.err?.kind, 'run'); assert.match(e.cadre.at(-1)!.say, /^Eroare la rulare, linia 5/);
   const c = masina(H + 'int a' + F, '');
   assert.equal(c.cadre.length, 0); assert.equal(c.err?.kind, 'compile');
+});
+const G = '#include <iostream>\nusing namespace std;\n';
+const run = (src: string, inp = '') => compile(G + src).run(inp).out;
+t('long long: literals, arithmetic, casts, wrap-around', () => {
+  assert.equal(out('long long a = 1870413123455;\ncout << a / 1000000000000 << " " << a % 100;'), '1 55');
+  assert.equal(out('int a = 100000;\ncout << a * a << " " << (long long)a * a << " " << 1LL * a * a << " " << 2147483648;'), '1410065408 10000000000 10000000000 2147483648');
+  assert.equal(out('long long b = 9223372036854775807;\nb++;\ncout << b;'), '-9223372036854775808');
+  assert.equal(out('long long a = -7;\nint c = a;\nc += a;\ncout << a / 2 << a % 2 << (a < 3) << !a << c;'), '-3-110-14');
+  assert.equal(out('long long a;\ncin >> a;\nif (a) cout << a * 2;', '-4000000000'), '-8000000000');
+  assert.equal(out('long long a, b;\nint c;\nlong long *p = &b;\n*p = 3;\ncout << &a << " " << &b << " " << &c << " " << b;'), '0x1000 0x1008 0x1010 3');
+});
+t('long long: errors', () => {
+  assert.match(err(H + 'int a;\ncin >> a;' + F, '1870413123455').message, /nu încape într-un int.*long long/);
+  for (const [body, re] of [
+    ['long a;', /long long/],
+    ['long long x = 5;\nint *p = &x;', /spre o cutie int/],
+    ['int x = 99999999999999999999;', /chiar și pentru long long/],
+  ] as const) assert.match(err(H + body + F).message, re, body);
+});
+t('functions: values, recursion, pointers, prototypes', () => {
+  assert.equal(run('long long f(int n) {\nif (n <= 1) return 1;\nreturn n * f(n - 1);\n}\nint main() {\ncout << f(20);\n}'), '2432902008176640000');
+  assert.equal(run('int fib(int n) { if (n < 2) return n; return fib(n - 1) + fib(n - 2); }\nint main() { cout << fib(15); }'), '610');
+  assert.equal(run('void sw(int *a, int *b) { int t = *a; *a = *b; *b = t; }\nint main() { int x = 1, y = 2; sw(&x, &y); cout << x << y; }'), '21');
+  assert.equal(run('int s(int n);\nint main() { cout << s(100); }\nint s(int n) { if (n == 0) return 0; return n + s(n - 1); }'), '5050');
+  assert.equal(run('int g = 5;\nvoid f() { g++; return; }\nint main() { f(); f(); cout << g; }'), '7');
+  assert.equal(run('int f(int x) { x = 9; return x; }\nint main() { int a = 1; cout << f(a) << a; }'), '91');
+});
+t('functions: run-time errors', () => {
+  const e = err(G + 'int f(int n) {\nif (n > 0) return 1;\n}\nint main() { cout << f(0); }');
+  assert.equal(e.kind, 'run'); assert.match(e.message, /fără să întoarcă/); assert.equal(e.line, 5);
+  assert.match(err(G + 'int s(int n) { return n + s(n - 1); }\nint main() { cout << s(5); }').message, /Prea multe apeluri/);
+  assert.match(err(G + 'int *q;\nvoid f() { int a = 3; q = &a; }\nint main() { f(); cout << *q; }').message, /la sfârșitul funcției/);
+});
+t('functions: friendly compile errors', () => {
+  for (const [src, re] of [
+    ['int main() { cout << sqrt(4); }', /biblioteca/],
+    ['int main() { cout << f(4); }', /nu a fost scrisă mai sus/],
+    ['void f() { }\nint main() { int x = f(); }', /void/],
+    ['void f() { }\nint main() { cout << f(); }', /void/],
+    ['int f(int a, int b) { return a + b; }\nint main() { cout << f(1); }', /are 2 parametri/],
+    ['int *g() { return 0; }\nint main() { }', /nu un pointer/],
+    ['int f(int &a) { return a; }\nint main() { }', /referință/],
+    ['int main() {\nint f(int a);\n}', /în afara lui main/],
+    ['int f(int a) { return; }\nint main() { }', /trebuie să întoarcă/],
+    ['void f() { return 1; }\nint main() { }', /return;/],
+    ['int f(int a);\nint main() { cout << f(1); }', /doar antetul/],
+    ['int f(int a);\nlong long f(int a) { return a; }\nint main() { }', /nu se potrivește/],
+    ['int f(int a) { int a = 2; return a; }\nint main() { }', /parametru/],
+    ['int x;\nint x() { return 1; }\nint main() { }', /variabile globale/],
+    ['void f(int *p) { }\nint main() { int a; f(a); }', /adresa/],
+  ] as const) {
+    const e = err(G + src);
+    assert.equal(e.kind, 'compile', src); assert.match(e.message, re, src);
+  }
+});
+t('functions: the stepper shows one frame per call', () => {
+  const r = compile(G + 'int sq(int x) {\nint y = x * x;\nreturn y;\n}\nint main() {\nint a = sq(3);\ncout << a;\n}').run('');
+  const inside = r.trace.find(s => s.vars.some(v => v[0] === 'y'))!;
+  assert.deepEqual(inside.calls, ['main', 'sq']);
+  assert.deepEqual(inside.vars.map(v => v[0] + '@' + v[4]), ['a@0', 'x@1', 'y@1']);
+  assert.deepEqual(r.trace.at(-1)!.vars.map(v => [v[0], v[1]]), [['a', 9]]);
+});
+t('masina: a function call', () => {
+  const m = masina(MASINI[4].code, MASINI[4].inp);
+  assert.equal(m.out, '10');
+  assert.match(m.cadre.find(c => c.fel === 'call')!.say, /sare la funcția dublu/);
+  assert.match(m.cadre.find(c => c.fel === 'ret')!.say, /întoarce valoarea 10/);
+  assert.match(m.cadre.find(c => c.fel === 'free' && /dublu/.test(c.say))!.say, /cutia lui x este eliberată/);
+});
+t('explain: functions and long long', () => {
+  assert.match(explain('int suma(int a, int b) {')[0], /funcția suma.*parametrii a, b.*int/);
+  assert.match(explain('long long fact(int n);')[0], /Anunță funcția fact/);
+  assert.match(explain('return n * fact(n - 1);').join(' '), /întoarce.*fact\(\.\.\.\) este un apel/);
+  assert.match(explain('schimba(&x, &y);')[0], /^Apelează funcția schimba/);
+  assert.match(explain('long long x = 5;')[0], /long long/);
+  assert.match(explain('cout << (long long)a * b;').join(' '), /numere mari/);
+});
+t('probleme: cnp1 can be solved with long long', () => {
+  const p = P({ ex: [{ in: '1 \n1 \n2010\n1870413123455', out: 'Major' }] });
+  const src = G + 'int main() {\nint z, l, a;\nlong long c;\ncin >> z >> l >> a >> c;\nint s = c / 1000000000000, an = c / 10000000000 % 100, ln = c / 100000000 % 100, zi = c / 1000000 % 100;\n'
+    + 'if (s <= 2) an += 1900; else an += 2000;\nint v = a - an;\nif (l < ln || (l == ln && z < zi)) v--;\nif (v >= 18) cout << "Major"; else cout << "Minor";\nreturn 0;\n}';
+  assert.ok(verifica(src, p).every(r => r.ok));
 });
 console.log(n + ' tests passed');
