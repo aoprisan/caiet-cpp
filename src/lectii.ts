@@ -77,6 +77,7 @@ export const LECTII: Lectie[] = [
   {
     id: 'heap', titlu: 'Heap-ul',
     text: [
+      'Amintește-ți: un **pointer** este o cutie care ține minte **adresa** altei cutii. `int *p = &a;` pune în p adresa lui a, iar `*p` înseamnă „cutia spre care arată p”, adică chiar a.',
       'Uneori vrei o cutie care **să nu plece** la `}`. O ceri din altă parte a memoriei, **heap-ul**, cu `new`: `int *p = new int(5);` face acolo o cutie cu 5 și pune adresa ei în pointerul p.',
       'Cutia din heap **nu are nume**. O folosești doar prin pointer: `*p` este cutia spre care arată p. Aici le numim „heap 1”, „heap 2”, ca să le deosebești.',
       'Cutia rămâne în heap până o eliberezi tu, cu `delete p;`. Abia atunci locul ei poate fi dat altei cutii, la următorul `new`.',
