@@ -101,6 +101,23 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .cell b{font-weight:600; overflow-wrap:anywhere}
 .cell.chg{background:var(--cur-bg)}
 .cell .q{color:var(--muted)}
+.cell .tag{margin-left:auto; font:700 .72rem/24px var(--body); color:var(--accent); text-transform:uppercase; letter-spacing:.03em}
+/* Memory animations (caiet.anim, while solving a problem): a box taken drops onto the stack, a freed box fades off. */
+.cell.nou{background:var(--cur-bg); animation:ia .5s ease-out}
+.cell.plec{border-style:dashed; color:var(--muted); animation:plec .7s ease-in .55s forwards}
+.cell.plec b{text-decoration:line-through}
+.cell.plec .tag{color:var(--err)}
+.frame.nou{animation:ia .5s ease-out}
+.frame.plec{border-style:dashed; border-color:var(--muted); animation:plec .7s ease-in .55s forwards}
+.frame.plec h3{background:var(--muted)}
+.frame.plec .cell.plec{animation:none}
+@keyframes ia{from{transform:translateY(-28px); opacity:0}}
+@keyframes plec{to{transform:translateY(-28px); opacity:0}}
+.smem{margin:0; padding:6px 10px; border-left:3px solid var(--line); color:var(--muted); font-size:.95rem; min-height:3em}
+.smem.now{border-left-color:var(--accent); color:var(--ink)}
+.stepbar .play{font-family:var(--body); white-space:nowrap}
+.panim{display:flex; gap:8px; align-items:flex-start; font-size:.92rem; cursor:pointer}
+.panim input{margin-top:3px; accent-color:var(--accent); width:18px; height:18px; flex:none}
 .none{margin:0; padding:6px 10px; color:var(--muted)}
 #inp{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; height:96px; width:100%; resize:vertical}
 .out{background:var(--paper); border:1px solid var(--line); border-radius:6px; min-height:170px; display:flex; flex-direction:column}
@@ -260,7 +277,7 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 /* Without motion the packet just appears where it arrives. */
 @keyframes slideL{from{transform:translateX(40px); opacity:.4}}
 @keyframes slideR{from{transform:translateX(-40px); opacity:.4}}
-@media (prefers-reduced-motion: reduce){ .pk.go{animation-duration:1ms; animation-delay:0s} .mscreen::after{animation:none} [data-pane].slideL,[data-pane].slideR{animation:none} }
+@media (prefers-reduced-motion: reduce){ .cell.nou,.frame.nou{animation:none} .cell.plec,.frame.plec{animation-duration:1ms; animation-delay:1.2s} .pk.go{animation-duration:1ms; animation-delay:0s} .mscreen::after{animation:none} [data-pane].slideL,[data-pane].slideR{animation:none} }
 
 /* Problems: list + statement side by side; the bar above the input checks the program on the examples. */
 .pbar{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:8px}

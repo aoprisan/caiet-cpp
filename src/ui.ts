@@ -1,9 +1,10 @@
 // Page wiring: section menu, intro (processor and memory), editor, highlighting, run, step-through stack view,
 // machine view (CPU, memory, buses), examples, pbinfo problems (with the statement beside the editor while solving one).
-import { compile, CppError, type RunResult, type Snapshot, type Val } from './interp.js';
+import { compile, CppError, type RunResult, type Snapshot, type Val, type VarView } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
 import { MASINI, masina, type Cadru, type Masina } from './masina.js';
+import { schimbare, spune, type Schimbare } from './stiva.js';
 import { CAPITOLE, DIFICULTATI, blocuri, matches, note, pentruPbinfo, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -86,18 +87,31 @@ document.addEventListener('selectionchange', () => { if (document.activeElement 
 /** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step), what a pointer points to,
  * the function call it belongs to. */
 type Cell = [name: string, value: Val | undefined, global: boolean, idx: number, to: string | undefined, call: number | undefined];
-function frame(title: string, vars: Cell[], prev: Snapshot | undefined, from: boolean): HTMLElement {
+/** One frame of the stack. With the memory animations on (`d`), the boxes taken at this step slide in on top and the
+ * boxes freed (`gone`, drawn above the others since they were on top) fade away. */
+function frame(title: string, vars: Cell[], prev: Snapshot | undefined, from: boolean, d?: Schimbare, gone: VarView[] = []): HTMLElement {
   const f = document.createElement('div'); f.className = 'frame';
   const h = document.createElement('h3'); h.textContent = title; f.append(h);
-  if (!vars.length) { const p = document.createElement('p'); p.className = 'none'; p.textContent = 'Nicio variabilă încă.'; f.append(p) }
-  for (let i = vars.length - 1; i >= 0; i--) {
-    const [name, val, , idx, to] = vars[i], c = document.createElement('div'); c.className = 'cell';
+  if (!vars.length && !gone.length) { const p = document.createElement('p'); p.className = 'none'; p.textContent = 'Nicio variabilă încă.'; f.append(p) }
+  const box = (name: string, val: Val | undefined, to: string | undefined) => {
+    const c = document.createElement('div'); c.className = 'cell';
     const b = document.createElement('b'); b.textContent = name;
     const v = document.createElement('span'); v.textContent = to ? (to === 'nullptr' ? to : '→ ' + to) : val === undefined ? '?' : String(val);
     if (val === undefined) v.className = 'q';
+    c.append(b, v); return c;
+  };
+  for (let i = gone.length - 1; i >= 0; i--) {
+    const [name, val, , to] = gone[i], c = box(name, val, to);
+    c.classList.add('plec'); c.lastElementChild!.before(el('small', 'tag', 'eliberată'));
+    c.addEventListener('animationend', () => c.remove());
+    f.append(c);
+  }
+  for (let i = vars.length - 1; i >= 0; i--) {
+    const [name, val, , idx, to] = vars[i], c = box(name, val, to);
     const o = prev && prev.vars[idx];
-    if (from && (!o || o[0] !== name || o[1] !== val)) c.classList.add('chg');
-    c.append(b, v); f.append(c);
+    if (d && idx >= d.kept) { c.classList.add('nou'); c.lastElementChild!.before(el('small', 'tag', 'nouă')) }
+    else if (from && (!o || o[0] !== name || o[1] !== val)) c.classList.add('chg');
+    f.append(c);
   }
   return f;
 }
@@ -116,14 +130,31 @@ function showStep(i: number) {
       : 'Pasul ' + (cur + 1) + ' din ' + (n - 1) + ': urmează linia ' + s.line + '.')
     + (cut ? ' Programul are mulți pași, se pot urmări doar primii 2000.' : '');
   stackEl.innerHTML = '';
+  const on = animOn(), d = on && s && prev ? schimbare(prev, s) : undefined, say = d && s ? spune(d, s) : '';
+  sMem.hidden = !on || !s;
+  sMem.textContent = say || (!s ? '' : cur === 0 ? 'Memoria e goală. Apasă ▶ sau ⏵ Redă ca să vezi cum se iau cutiile.' : 'Nicio cutie nu vine și nu pleacă la pasul acesta.');
+  sMem.classList.toggle('now', !!say);
   if (s) {
     const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k, v[3], v[4]]);
+    const inCall = (v: VarView) => !v[2] && (v[4] ?? 0) >= (d?.same ?? 0);
+    // Function calls that just ended: their frame, all boxes freed, fades away above the others.
+    if (d) for (let k = (prev!.calls.length || 1) - 1; k >= d.same; k--) {
+      const f = frame((prev!.calls[k] || 'main') + '()', [], prev, false, d, d.freed.filter(v => inCall(v) && (v[4] ?? 0) === k));
+      f.classList.add('plec'); f.addEventListener('animationend', e => { if (e.target === f) f.remove() });
+      stackEl.append(f);
+    }
     // One frame per function call, the one running now on top, main at the bottom.
     const calls = s.calls.length ? s.calls : ['main'];
-    for (let k = calls.length - 1; k >= 0; k--) stackEl.append(frame(calls[k] + '()', all.filter(v => !v[2] && (v[5] ?? 0) === k), prev, cur > 0));
-    const g = all.filter(v => v[2]);
-    if (g.length) stackEl.append(frame('variabile globale', g, prev, cur > 0));
+    for (let k = calls.length - 1; k >= 0; k--) {
+      const f = frame(calls[k] + '()', all.filter(v => !v[2] && (v[5] ?? 0) === k), prev, cur > 0, d, d?.freed.filter(v => !inCall(v) && !v[2] && (v[4] ?? 0) === k));
+      if (d?.started.includes(k)) f.classList.add('nou');
+      stackEl.append(f);
+    }
+    const g = all.filter(v => v[2]), gg = d?.freed.filter(v => v[2]) ?? [];
+    if (g.length || gg.length) stackEl.append(frame('variabile globale', g, prev, cur > 0, d, gg));
   }
+  $<HTMLButtonElement>('sPlay').hidden = !on;
+  if (last) stopPlay();
   sCode.hidden = !curLine;
   sCode.innerHTML = curLine ? '<span class="ln">' + curLine + '</span>' + paint(code.value.split('\n')[curLine - 1].trim()) : '';
   follow.hidden = n < 2;
@@ -145,7 +176,30 @@ function saveMine() {
   drawBar();
 }
 
+/** The memory animations (the option in the problem bar, caiet.anim): only while a problem is in the editor. */
+const sMem = $('sMem'), sPlay = $<HTMLButtonElement>('sPlay'), pAnim = $<HTMLInputElement>('pAnim');
+const animOn = () => isProb(ex.value) && store.get('caiet.anim') === 'da';
+let playing = 0;
+/** Plays the steps one after another, from the start if the stepper is at the end. */
+function play() {
+  stopPlay();
+  if (cur >= steps.length - 1) showStep(0);
+  if (steps.length < 2) return;
+  playing = window.setInterval(() => showStep(cur + 1), 1100);
+  sPlay.textContent = '⏸ Pauză'; sPlay.setAttribute('aria-pressed', 'true');
+}
+function stopPlay() {
+  if (playing) clearInterval(playing);
+  playing = 0; sPlay.textContent = '⏵ Redă'; sPlay.setAttribute('aria-pressed', 'false');
+}
+sPlay.addEventListener('click', () => playing ? stopPlay() : play());
+pAnim.addEventListener('change', () => {
+  store.set('caiet.anim', pAnim.checked ? 'da' : '');
+  stopPlay(); showStep(cur);
+});
+
 function run() {
+  stopPlay();
   let r: Pick<RunResult, 'out' | 'trace' | 'cut'> & { end?: Snapshot }, err: CppError | null = null;
   try { r = compile(code.value).run(inp.value) }
   catch (e) {
@@ -165,11 +219,11 @@ function run() {
   showStep(steps.length - 1);
   if (mSrc === CAIET) mLoad(CAIET);
 }
-$('sFirst').addEventListener('click', () => showStep(0));
-$('sPrev').addEventListener('click', () => showStep(cur - 1));
-$('sNext').addEventListener('click', () => showStep(cur + 1));
-$('sLast').addEventListener('click', () => showStep(steps.length - 1));
-range.addEventListener('input', () => showStep(+range.value));
+$('sFirst').addEventListener('click', () => { stopPlay(); showStep(0) });
+$('sPrev').addEventListener('click', () => { stopPlay(); showStep(cur - 1) });
+$('sNext').addEventListener('click', () => { stopPlay(); showStep(cur + 1) });
+$('sLast').addEventListener('click', () => { stopPlay(); showStep(steps.length - 1) });
+range.addEventListener('input', () => { stopPlay(); showStep(+range.value) });
 
 /** Puts the caret at the start of a line and scrolls it into view (from the error message). */
 function goLine(line: number) {
@@ -215,7 +269,12 @@ code.addEventListener('input', () => { badLine = 0; curLine = 0; drawGutter(); s
 inp.addEventListener('input', () => { if (ex.value === 'mine' || isProb(ex.value)) saveMine() });
 code.addEventListener('scroll', sync);
 ex.addEventListener('change', () => { load(ex.value); run() });
-$('run').addEventListener('click', () => { run(); if (MOBILE.matches) tab('rulare') });
+$('run').addEventListener('click', () => {
+  run();
+  // With the memory animations on, Run also plays the steps from the start so the boxes come and go.
+  if (animOn() && steps.length > 1) { play(); if (MOBILE.matches) tab('pasi') }
+  else if (MOBILE.matches) tab('rulare');
+});
 
 // ---- Sections (the menu) and, on a phone, the parts of the caiet (bottom tabs). Keep MOBILE in sync with the media query in css/style.css.
 const MOBILE = matchMedia('(max-width:760px), (pointer:coarse) and (max-height:500px)');
@@ -630,6 +689,7 @@ function drawBar() {
   if (!on) return;
   $('pName').textContent = p ? p.nume : (ex.selectedOptions[0]?.text || '').replace('Problema: ', '');
   $<HTMLButtonElement>('pCheck').disabled = $<HTMLButtonElement>('pSend').disabled = !p;
+  pAnim.checked = store.get('caiet.anim') === 'da';
 }
 /** While a problem is in the editor its statement stays at hand: a column beside the code on a computer
  * (it can be hidden with „Enunțul”, remembered in caiet.enunt), the „Enunț” tab on a phone. */

@@ -5,6 +5,7 @@ import { explain } from '../src/explain.js';
 import { note, matches, same, verifica, blocuri, pentruPbinfo, type Problema } from '../src/probleme.js';
 import { DEMOS, INTREBARI, memorie } from '../src/intro.js';
 import { MASINI, masina } from '../src/masina.js';
+import { schimbare, spune } from '../src/stiva.js';
 
 const H = '#include <iostream>\nusing namespace std;\nint main(){\n', F = '\nreturn 0;}';
 const out = (body: string, inp?: string) => compile(H + body + F).run(inp || '').out;
@@ -317,5 +318,29 @@ t('probleme: cnp1 can be solved with long long', () => {
   const src = G + 'int main() {\nint z, l, a;\nlong long c;\ncin >> z >> l >> a >> c;\nint s = c / 1000000000000, an = c / 10000000000 % 100, ln = c / 100000000 % 100, zi = c / 1000000 % 100;\n'
     + 'if (s <= 2) an += 1900; else an += 2000;\nint v = a - an;\nif (l < ln || (l == ln && z < zi)) v--;\nif (v >= 18) cout << "Major"; else cout << "Minor";\nreturn 0;\n}';
   assert.ok(verifica(src, p).every(r => r.ok));
+});
+t('stiva: boxes taken and freed, calls started and ended', () => {
+  const r = compile('#include <iostream>\nusing namespace std;\nint dublu(int x) {\n    int y = x * 2;\n    return y;\n}\nint main() {\n    int n = 2, s = 0;\n'
+    + '    for (int i = 0; i < n; i++) {\n        int t = dublu(i);\n        s += t;\n    }\n    cout << s;\n    return 0;\n}').run('');
+  const st = [...r.trace, r.end], said = st.map((s, k) => spune(schimbare(st[k - 1], s), s)).filter(Boolean);
+  assert.deepEqual(said.slice(0, 6), [
+    'Se iau cutii noi de pe stivă pentru n și s.',
+    'Se ia o cutie nouă de pe stivă pentru i.',
+    'Se ia o cutie nouă de pe stivă pentru t. Se cheamă dublu(): pe stivă apare un loc nou pentru cutiile ei (x).',
+    'Se ia o cutie nouă de pe stivă pentru y.',
+    'Funcția dublu() s-a terminat: cutiile ei sunt eliberate și ies de pe stivă.',
+    'Cutia lui t este eliberată: iese de pe stivă la „}”.',
+  ]);
+  assert.equal(said.at(-1), 'Cutiile lui n și s sunt eliberate: ies de pe stivă la „}”, ultima pusă pleacă prima.');
+  // A box declared again in the next turn of the loop is freed at `}` and taken again, not kept.
+  const k = st.findIndex((s, j) => j > 0 && schimbare(st[j - 1], s).freed.some(v => v[0] === 't'));
+  const d = schimbare(st[k - 1], st[k]);
+  assert.deepEqual(d.freed.map(v => v[0]), ['t']); assert.deepEqual(d.taken, []); assert.equal(d.kept, 3);
+  // A recursive call is a new frame even though the function has the same name.
+  const f = compile('#include <iostream>\nusing namespace std;\nint f(int n) {\n    if (n == 0) return 0;\n    return f(n - 1);\n}\nint main() {\n    cout << f(1);\n    return 0;\n}').run('');
+  const fs = [...f.trace, f.end], deeper = fs.findIndex(s => s.calls.length === 3);
+  const dd = schimbare(fs[deeper - 1], fs[deeper]);
+  assert.deepEqual(dd.started, [2]); assert.deepEqual(dd.taken.map(v => v[0]), ['n']); assert.equal(dd.freed.length, 0);
+  assert.equal(spune(schimbare(undefined, fs[0]), fs[0]), '');
 });
 console.log(n + ' tests passed');

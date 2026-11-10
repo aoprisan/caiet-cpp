@@ -132,6 +132,7 @@
             <button type="button" class="check" id="pCheck">✓ Verifică pe exemple</button>
             <button type="button" class="pbtn" id="pSend" title="Copiază programul și deschide problema pe pbinfo.ro, ca să-l trimiți acolo">⇪ Trimite pe pbinfo</button>
           </div>
+          <label class="panim"><input type="checkbox" id="pAnim"> <span>Animații în memorie: la <b>▶ Rulează</b> urmărești cum se iau cutiile pe stivă și cum sunt eliberate</span></label>
           <ul id="pRes" aria-live="polite"></ul>
           <div id="pSent" class="psent" aria-live="polite" hidden></div>
         </div>
@@ -156,10 +157,12 @@
             <button type="button" id="sPrev" aria-label="Pasul dinainte" title="Pasul dinainte">◀</button>
             <button type="button" id="sNext" aria-label="Pasul următor" title="Pasul următor">▶</button>
             <button type="button" id="sLast" aria-label="La sfârșit" title="La sfârșit">▶|</button>
+            <button type="button" id="sPlay" class="play" aria-label="Redă pașii unul după altul" title="Redă pașii unul după altul" hidden>⏵ Redă</button>
             <input type="range" id="sRange" min="0" max="0" value="0" aria-label="Pasul curent">
           </div>
           <p id="sLabel"></p>
           <pre class="mob" id="sCode" hidden></pre>
+          <p id="sMem" class="smem" aria-live="polite" hidden></p>
           <div id="stack"></div>
         </div>
       </div>
