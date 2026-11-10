@@ -1,6 +1,6 @@
 // The machine view: what goes through the processor, the memory and the buses between them while a program runs.
 // Turns the interpreter's bus events into frames with Romanian sentences. Data only, no DOM.
-import { adresa, compile, CppError, type Box, type BusStep, type Val } from './interp.js';
+import { adresa, adresaHeap, compile, CppError, type Box, type BusStep, type Val } from './interp.js';
 
 const H = '#include <iostream>\nusing namespace std;\n\nint main() {\n', F = '    return 0;\n}\n';
 const prog = (lines: string[]) => H + lines.map(l => '    ' + l + '\n').join('') + F;
@@ -11,14 +11,16 @@ export const MASINI: { name: string; code: string; inp: string }[] = [
   { name: 'Atribuiri', inp: '', code: prog(['int a = 5;', 'int b = a + 2;', 'a = a * b;', 'cout << a;']) },
   { name: 'O repetiție', inp: '', code: prog(['int s = 0;', 'for (int i = 1; i <= 3; i++) {', '    s = s + i;', '}', 'cout << s;']) },
   { name: 'Pointerul', inp: '', code: prog(['int a = 5;', 'int *p = &a;', '*p = *p + 1;', 'cout << a;']) },
+  { name: 'O cutie din heap', inp: '', code: prog(['int *p = new int(7);', '*p = *p * 2;', 'cout << *p;', 'delete p;']) },
   {
     name: 'O funcție', inp: '',
     code: H.replace('int main() {\n', 'int dublu(int x) {\n    return 2 * x;\n}\n\nint main() {\n') + '    int a = dublu(5);\n    cout << a;\n' + F,
   },
 ];
 
-/** A box of memory as drawn: its address (and place on the stack, `at`), name, value as text (a pointer shows an address). */
-export interface Celula { slot: number; at: number; adr: string; name: string; val: string; gol: boolean; ptr: boolean }
+/** A box of memory as drawn: its address (and place on the stack, or on the heap if `heap`, `at`), name, value as text
+ * (a pointer shows an address). */
+export interface Celula { slot: number; at: number; adr: string; name: string; val: string; gol: boolean; ptr: boolean; heap?: boolean }
 /**
  * One frame of the machine view. `adr`, `cmd` and `date` are what the address, control and data buses carry
  * (`spre` says where the data goes); `io` is a trip between the processor and the keyboard (`in`) or the screen (`out`).
@@ -56,9 +58,9 @@ export function masina(src: string, input: string): Masina {
   // Every box seen so far: a pointer can point to a box that already left the stack, and keeps showing its address.
   const seen = new Map<number, Box>();
   /** The address of box `slot`: the same made-up address cout shows for a pointer to it. */
-  const adr = (slot: number) => adresa(seen.get(slot)![4]);
+  const adr = (slot: number) => { const b = seen.get(slot)!; return b[5] ? adresaHeap(b[4]) : adresa(b[4]) };
   const val = (v: Val | undefined, ptr: boolean) => v === undefined ? 'goală' : ptr ? (v === 0 ? 'nullptr' : adr(Number(v) - 1)) : String(v);
-  const celula = ([slot, name, v, ptr, at]: Box): Celula => ({ slot, at, adr: adr(slot), name, val: val(v, ptr), gol: v === undefined, ptr });
+  const celula = ([slot, name, v, ptr, at, heap]: Box): Celula => ({ slot, at, adr: adr(slot), name, val: val(v, ptr), gol: v === undefined, ptr, ...heap ? { heap } : {} });
   steps.forEach((st, i) => {
     for (const b of st.mem) seen.set(b[0], b);
     const e = st.e, mem = st.mem.map(celula), box = (s: number) => st.mem.find(b => b[0] === s) || seen.get(s);
@@ -77,8 +79,11 @@ export function masina(src: string, input: string): Masina {
       case 'decl': {
         const b = box(e.slot)!;
         c.cell = e.slot;
-        c.say = 'În memorie se pregătește o cutie pentru ' + (b[3] ? 'pointerul ' : '') + b[1] + ', la adresa ' + adr(e.slot) + '. '
-          + (b[2] === undefined ? 'Deocamdată e goală.' : 'E o variabilă globală, așa că primește 0.');
+        c.say = b[5]
+          ? 'new cere memoriei o cutie nouă din heap, „' + b[1] + '”, la adresa ' + adr(e.slot) + '. Ea nu are nume: o găsim doar prin pointerul care primește adresa ei. '
+            + 'Rămâne în heap până la delete, chiar și după „}”.'
+          : 'În memorie se pregătește o cutie pentru ' + (b[3] ? 'pointerul ' : '') + b[1] + ', la adresa ' + adr(e.slot) + '. '
+            + (b[2] === undefined ? 'Deocamdată e goală.' : 'E o variabilă globală, așa că primește 0.');
         break;
       }
       case 'read': {
@@ -132,13 +137,19 @@ export function masina(src: string, input: string): Masina {
         break;
       case 'free':
         c.freed = e.slots.map(s => celula(box(s)!));
+        if (e.heap) {
+          c.say = 'delete eliberează cutia „' + name(e.slots[0]) + '” din heap, de la adresa ' + adr(e.slots[0]) + '. Locul ei poate fi dat de următorul new. '
+            + 'Pointerul ține minte adresa, dar cutia nu mai poate fi folosită.';
+          break;
+        }
         if (e.fn) {
           c.say = 'Funcția ' + e.fn + ' s-a terminat: ' + (e.slots.length > 1 ? 'cutiile ei, ' + e.slots.map(name).join(', ') + ', sunt eliberate' : 'cutia lui ' + name(e.slots[0]) + ' este eliberată')
             + '. Locul lor de pe stivă poate fi refolosit.';
           break;
         }
-        c.say = !st.mem.length && i === steps.length - 1
-          ? 'La „}” se termină main, deci și programul: toate cutiile sunt eliberate.'
+        c.say = !st.mem.some(b => !b[5]) && i === steps.length - 1
+          ? 'La „}” se termină main, deci și programul: toate cutiile de pe stivă sunt eliberate.'
+            + (st.mem.length ? ' În heap au rămas cutii fără delete (' + st.mem.map(b => b[1]).join(', ') + '): programul a uitat să le elibereze.' : '')
           : 'La „}” se termină blocul. ' + (e.slots.length > 1 ? 'Cutiile ' + e.slots.map(name).join(', ') + ' sunt eliberate' : 'Cutia lui ' + name(e.slots[0]) + ' este eliberată')
             + ': nu mai pot fi folosite, iar locul lor poate fi refolosit.';
         break;

@@ -1,6 +1,6 @@
 // Page wiring: section menu, intro (processor and memory), editor, highlighting, run, step-through stack view,
 // machine view (CPU, memory, buses), examples, pbinfo problems (with the statement beside the editor while solving one).
-import { compile, CppError, type RunResult, type Snapshot, type Val, type VarView } from './interp.js';
+import { compile, CppError, type HeapView, type RunResult, type Snapshot, type Val, type VarView } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
 import { MASINI, masina, type Cadru, type Masina } from './masina.js';
@@ -27,6 +27,7 @@ const EX: { name: string; inp: string; code: string }[] = [
   { name: 'Cel mai mare divizor comun', inp: '84 36', code: H + '    int a, b, r;\n    cin >> a >> b;\n    while (b != 0) {\n        r = a % b;\n        a = b;\n        b = r;\n    }\n    cout << "cmmdc = " << a << endl;\n' + F },
   { name: 'O funcție: este prim?', inp: '97', code: '#include <iostream>\nusing namespace std;\n\nint prim(int n) {\n    if (n < 2) {\n        return 0;\n    }\n    for (int d = 2; d * d <= n; d++) {\n        if (n % d == 0) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main() {\n    int n;\n    cin >> n;\n    if (prim(n)) {\n        cout << n << " este prim" << endl;\n    } else {\n        cout << n << " nu este prim" << endl;\n    }\n' + F },
   { name: 'Factorial cu long long', inp: '20', code: '#include <iostream>\nusing namespace std;\n\nlong long factorial(int n) {\n    if (n <= 1) {\n        return 1;\n    }\n    return n * factorial(n - 1);   // funcția se apelează pe ea însăși\n}\n\nint main() {\n    int n;\n    cin >> n;\n    cout << n << "! = " << factorial(n) << endl;\n' + F },
+  { name: 'Stiva și heap-ul', inp: '5', code: H + '    int n;\n    cin >> n;\n    int *p = new int(0);   // o cutie din heap, cu 0 în ea\n    for (int i = 1; i <= n; i++) {\n        int patrat = i * i;   // pleacă de pe stivă la }\n        *p = *p + patrat;\n    }\n    cout << "Suma pătratelor: " << *p << endl;\n    cout << "Cutia din heap e la adresa " << p << endl;\n    delete p;   // eliberăm cutia din heap\n' + F },
   { name: 'Tabla înmulțirii', inp: '7', code: H + '    int n;\n    cin >> n;\n    for (int i = 1; i <= 10; i++) {\n        cout << n << " x " << i << " = " << n * i << endl;\n    }\n' + F },
 ];
 const store = {
@@ -41,7 +42,7 @@ const keys = $('keys'), follow = $('follow'), sCode = $('sCode');
 const hl = $('hl'), band = $('band'), layer = $('layer'), range = $<HTMLInputElement>('sRange'), sLabel = $('sLabel'), stackEl = $('stack');
 let badLine = 0, curLine = 0, lines = 0, steps: Snapshot[] = [], cur = 0, fullOut = '', lastErr: CppError | null = null, cut = false;
 
-const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|long|void|if|else|while|for|do|return|break|continue|using|namespace|nullptr)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
+const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|long|void|if|else|while|for|do|return|break|continue|using|namespace|nullptr|new|delete)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
 const CLS = ['com', 'str', 'pre', 'num', 'kw', 'io'];
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function paint(src: string): string {
@@ -126,10 +127,14 @@ function showStep(i: number) {
   $<HTMLButtonElement>('sFirst').disabled = $<HTMLButtonElement>('sPrev').disabled = cur <= 0;
   $<HTMLButtonElement>('sNext').disabled = $<HTMLButtonElement>('sLast').disabled = last;
   sLabel.textContent = (!s ? 'Repară greșeala și rulează din nou ca să vezi variabilele.'
-    : last ? (lastErr ? 'Oprit la linia ' + lastErr.line + '.' : 'Program terminat.') + ' Apasă |◀ ca să îl urmărești pas cu pas.'
+    : last ? (lastErr ? 'Oprit la linia ' + lastErr.line + '.' : 'Program terminat.')
+      + (!lastErr && s.heap.length ? ' Atenție: în heap au rămas cutii fără delete.' : '') + ' Apasă |◀ ca să îl urmărești pas cu pas.'
       : 'Pasul ' + (cur + 1) + ' din ' + (n - 1) + ': urmează linia ' + s.line + '.')
     + (cut ? ' Programul are mulți pași, se pot urmări doar primii 2000.' : '');
   stackEl.innerHTML = '';
+  const stCol = el('div', 'mcol'), hpCol = el('div', 'mcol hp');
+  stCol.append(el('h4', '', 'Stiva'));
+  hpCol.append(el('h4', '', 'Heap'), el('small', 'mnote', 'cutiile luate cu new, până la delete'));
   const on = animOn(), d = on && s && prev ? schimbare(prev, s) : undefined, say = d && s ? spune(d, s) : '';
   sMem.hidden = !on || !s;
   sMem.textContent = say || (!s ? '' : cur === 0 ? 'Memoria e goală. Apasă ▶ sau ⏵ Redă ca să vezi cum se iau cutiile.' : 'Nicio cutie nu vine și nu pleacă la pasul acesta.');
@@ -141,17 +146,35 @@ function showStep(i: number) {
     if (d) for (let k = (prev!.calls.length || 1) - 1; k >= d.same; k--) {
       const f = frame((prev!.calls[k] || 'main') + '()', [], prev, false, d, d.freed.filter(v => inCall(v) && (v[4] ?? 0) === k));
       f.classList.add('plec'); f.addEventListener('animationend', e => { if (e.target === f) f.remove() });
-      stackEl.append(f);
+      stCol.append(f);
     }
     // One frame per function call, the one running now on top, main at the bottom.
     const calls = s.calls.length ? s.calls : ['main'];
     for (let k = calls.length - 1; k >= 0; k--) {
       const f = frame(calls[k] + '()', all.filter(v => !v[2] && (v[5] ?? 0) === k), prev, cur > 0, d, d?.freed.filter(v => !inCall(v) && !v[2] && (v[4] ?? 0) === k));
       if (d?.started.includes(k)) f.classList.add('nou');
-      stackEl.append(f);
+      stCol.append(f);
     }
     const g = all.filter(v => v[2]), gg = d?.freed.filter(v => v[2]) ?? [];
-    if (g.length || gg.length) stackEl.append(frame('variabile globale', g, prev, cur > 0, d, gg));
+    if (g.length || gg.length) stCol.append(frame('variabile globale', g, prev, cur > 0, d, gg));
+    // The heap: boxes without a name, reached only through a pointer; they stay until delete, whatever `}` comes.
+    const hp = el('div', 'frame heap'), fresh = new Set(d?.heapTaken.map(h => h[0]));
+    const hbox = ([name, val, adr]: HeapView, cls: string, tag?: string) => {
+      const c = el('div', ('cell ' + cls).trim()), v = el('span', val === undefined ? 'q' : '', val === undefined ? '?' : String(val));
+      c.append(el('b', '', name), el('small', 'adr', adr));
+      if (tag) c.append(el('small', 'tag', tag));
+      c.append(v); return c;
+    };
+    for (const h of d?.heapFreed ?? []) {
+      const c = hbox(h, 'plec', 'eliberată'); c.addEventListener('animationend', () => c.remove()); hp.append(c);
+    }
+    for (const h of s.heap) {
+      const o = prev?.heap.find(x => x[0] === h[0]);
+      hp.append(hbox(h, fresh.has(h[0]) ? 'nou' : cur > 0 && (!o || o[1] !== h[1]) ? 'chg' : '', fresh.has(h[0]) ? 'nouă' : undefined));
+    }
+    if (!hp.children.length) hp.append(el('p', 'none', 'Nicio cutie în heap.'));
+    hpCol.append(hp);
+    stackEl.append(stCol, hpCol);
   }
   $<HTMLButtonElement>('sPlay').hidden = !on;
   if (last) stopPlay();
@@ -473,8 +496,14 @@ function mShow(i: number) {
   const at = mProg.children[c.line - 1] as HTMLElement | undefined;
   if (at && (at.offsetTop < mProg.scrollTop || at.offsetTop + at.offsetHeight > mProg.scrollTop + mProg.clientHeight)) mProg.scrollTop = at.offsetTop - mProg.clientHeight / 2;
   mData.innerHTML = '';
-  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)].sort((a, b) => a[0].at - b[0].at);
-  for (const [m, f] of all) mData.append(cell(c, m, f));
+  // The stack first, then the heap (boxes taken with new), each by address.
+  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)]
+    .sort((a, b) => (a[0].heap ? 1e6 : 0) + a[0].at - (b[0].heap ? 1e6 : 0) - b[0].at);
+  let hp = false;
+  for (const [m, f] of all) {
+    if (m.heap && !hp) { hp = true; mData.append(el('p', 'mheap', 'Heap: cutiile luate cu new')) }
+    mData.append(cell(c, m, f));
+  }
   if (!all.length) mData.append(el('p', 'none', 'Nicio cutie folosită încă.'));
   // Keyboard and screen
   mKeys.innerHTML = '';

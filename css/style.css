@@ -119,6 +119,17 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .panim{display:flex; gap:8px; align-items:flex-start; font-size:.92rem; cursor:pointer}
 .panim input{margin-top:3px; accent-color:var(--accent); width:18px; height:18px; flex:none}
 .none{margin:0; padding:6px 10px; color:var(--muted)}
+/* The caiet's memory: the stack and the heap side by side when there is room, else one under the other. */
+#stack{display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; align-items:start}
+.mcol{min-width:0}
+.mcol h4{margin:0 0 6px; font:700 .8rem/1.4 var(--body); text-transform:uppercase; letter-spacing:.05em; color:var(--muted)}
+.mcol.hp h4{margin-bottom:0}
+.mnote{display:block; margin-bottom:6px; color:var(--muted); font-size:.8rem}
+.frame.heap{border-color:var(--accent)}
+.frame.heap .cell{gap:8px}
+.cell .adr{font:400 .75rem/24px var(--mono); color:var(--muted)}
+.frame.heap .cell .adr{margin-right:auto}
+.frame.heap .cell .tag{margin-left:0}
 #inp{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; height:96px; width:100%; resize:vertical}
 .out{background:var(--paper); border:1px solid var(--line); border-radius:6px; min-height:170px; display:flex; flex-direction:column}
 #out{margin:0; padding:10px 12px; font:400 16px/24px var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; flex:1}
@@ -259,6 +270,7 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .mprog div.cur{background:var(--cur-bg); box-shadow:inset 3px 0 0 var(--accent)}
 .mprog div.r{outline:2px solid var(--c-cmd); outline-offset:-2px}
 .mdata{margin:0 8px; display:flex; flex-direction:column; gap:4px}
+.mheap{margin:6px 0 0; padding:2px 8px; font:700 .78rem/1.6 var(--body); color:var(--muted); border-top:2px dashed var(--line)}
 .mcell{display:grid; grid-template-columns:4.6em minmax(2em,auto) minmax(0,1fr); align-items:center; gap:8px; padding:3px 8px; min-height:34px;
   border:2px solid var(--ink); border-radius:4px; background:var(--paper); font-family:var(--mono); transition:background .2s}
 .mcell small{font-size:.75rem; color:var(--c-adr)}

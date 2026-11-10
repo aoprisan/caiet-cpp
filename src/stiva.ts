@@ -1,7 +1,8 @@
-// What changed on the stack between two steps of a run: which boxes stayed, which were taken (put on top) and which were
-// freed (taken off the top at a block's `}` or when a function call ends), and a Romanian sentence saying so.
+// What changed in memory between two steps of a run: on the stack, which boxes stayed, which were taken (put on top) and
+// which were freed (taken off the top at a block's `}` or when a function call ends); on the heap, which boxes new took and
+// delete gave back; and a Romanian sentence saying so.
 // Used by the caiet's memory animations; no DOM access.
-import type { Snapshot, VarView } from './interp.js';
+import type { HeapView, Snapshot, VarView } from './interp.js';
 
 export interface Schimbare {
   /** How many boxes at the bottom of the stack are the same in both steps. */
@@ -15,6 +16,9 @@ export interface Schimbare {
   started: number[];
   /** How many function calls (from main) are the same in both steps. */
   same: number;
+  /** Heap boxes taken with new and given back with delete since the step before (heap boxes have unique names). */
+  heapTaken: HeapView[];
+  heapFreed: HeapView[];
 }
 
 const calls = (s: Snapshot | undefined) => s && s.calls.length ? s.calls : ['main'];
@@ -23,6 +27,7 @@ const same = (a: VarView, b: VarView) => a[0] === b[0] && a[2] === b[2] && (a[4]
 /** The stack is a stack: the boxes that stayed are a common bottom part, the rest left from the top or came on top. */
 export function schimbare(a: Snapshot | undefined, b: Snapshot): Schimbare {
   const va = a ? a.vars : [], vb = b.vars, ca = a ? calls(a) : [], cb = calls(b);
+  const ha = new Set(a ? a.heap.map(h => h[0]) : []), hb = new Set(b.heap.map(h => h[0]));
   let f = 0; // function calls that are the same in both steps
   while (f < ca.length && f < cb.length && ca[f] === cb[f]) f++;
   let kept = 0;
@@ -30,6 +35,7 @@ export function schimbare(a: Snapshot | undefined, b: Snapshot): Schimbare {
   return {
     kept, freed: va.slice(kept), taken: vb.slice(kept),
     ended: a ? ca.slice(f).reverse() : [], started: a ? cb.map((_, k) => k).slice(f) : [], same: f,
+    heapTaken: b.heap.filter(h => !ha.has(h[0])), heapFreed: a ? a.heap.filter(h => !hb.has(h[0])) : [],
   };
 }
 
@@ -38,6 +44,8 @@ const list = (xs: string[]) => xs.length < 2 ? xs.join('') : xs.slice(0, -1).joi
 /** One or two short sentences about what happened in memory, or '' when no box came or went. */
 export function spune(d: Schimbare, now: Snapshot): string {
   const out: string[] = [], cb = calls(now), inCall = (v: VarView) => !v[2] && (v[4] ?? 0) >= d.same;
+  // A step runs one statement, then maybe a few `}`: a delete comes before the boxes freed at them.
+  for (const h of d.heapFreed) out.push('delete eliberează cutia „' + h[0] + '” din heap (adresa ' + h[2] + '): locul ei poate fi dat de următorul new.');
   // Boxes of a call that ended are told with the call; the others left at a `}`.
   const block = d.freed.filter(v => !inCall(v)).map(v => v[0]);
   if (block.length) out.push(block.length === 1 ? 'Cutia lui ' + block[0] + ' este eliberată: iese de pe stivă la „}”.'
@@ -50,5 +58,9 @@ export function spune(d: Schimbare, now: Snapshot): string {
     const ps = d.taken.filter(v => !v[2] && (v[4] ?? 0) === k).map(v => v[0]);
     out.push('Se cheamă ' + cb[k] + '(): pe stivă apare un loc nou pentru cutiile ei' + (ps.length ? ' (' + list(ps) + ')' : '') + '.');
   }
+  for (const h of d.heapTaken) out.push('new ia o cutie nouă din heap, „' + h[0] + '”, la adresa ' + h[2] + '. Ea rămâne acolo până la delete, chiar și după „}”.');
+  // The program ended (line 0) with boxes still on the heap: nobody gave them back.
+  if (now.line === 0 && now.heap.length) out.push((now.heap.length === 1 ? 'În heap a rămas cutia „' + now.heap[0][0] + '”' : 'În heap au rămas cutiile ' + list(now.heap.map(h => '„' + h[0] + '”')))
+    + ' fără delete: programul a uitat ' + (now.heap.length === 1 ? 's-o elibereze.' : 'să le elibereze.'));
   return out.join(' ');
 }

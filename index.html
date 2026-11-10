@@ -66,13 +66,19 @@
         <h3>Stiva</h3>
         <p>Cutiile variabilelor stau într-o parte a memoriei numită <b>stivă</b>. Ca la un teanc de farfurii: fiecare <code>int</code> nou pune o cutie <b>deasupra</b> celorlalte, în vârf.</p>
         <p>O atribuire ca <code>a = 6;</code> nu pune o cutie nouă: schimbă numărul din cutia <b>a</b>, acolo unde stă ea pe stivă.</p>
-        <p>La <code>}</code>, cutiile luate în blocul acela sunt scoase de sus: ultima pusă pleacă prima. Locul lor se refolosește. Panoul „Stiva” de lângă program îți arată asta la fiecare pas.</p>
+        <p>La <code>}</code>, cutiile luate în blocul acela sunt scoase de sus: ultima pusă pleacă prima. Locul lor se refolosește. Panoul „Memoria” de lângă program îți arată asta la fiecare pas.</p>
       </div>
       <div class="icard">
         <div class="ipic ptr" aria-hidden="true"><span>p</span><b>•</b><em>→</em><span>a</span><b>5</b></div>
         <h3>Pointerul</h3>
         <p>Numărul unei cutii se numește <b>adresă</b>. <code>&amp;a</code> înseamnă „adresa lui a”. Un pointer este o cutie în care pui o adresă: <code>int *p = &amp;a;</code> Spunem că <b>p arată spre a</b>.</p>
         <p><code>*p</code> înseamnă „cutia spre care arată p”. Așa, <code>*p = 6;</code> pune 6 în a, fără să scrii a. Grijă: dacă a fost scoasă de pe stivă, p arată spre o cutie care nu mai există.</p>
+      </div>
+      <div class="icard">
+        <div class="ipic ptr" aria-hidden="true"><span>p</span><b>•</b><em>→</em><span>heap 1</span><b>7</b></div>
+        <h3>Heap-ul</h3>
+        <p>Mai există o parte a memoriei, <b>heap-ul</b>. <code>int *p = new int(7);</code> cere de acolo o cutie nouă, cu 7 în ea, și pune adresa ei în p. Cutia nu are nume: o folosești prin <code>*p</code>.</p>
+        <p>O cutie din heap <b>nu pleacă la <code>}</code></b>. Rămâne până scrii <code>delete p;</code> Dacă uiți de ea, ocupă degeaba memoria până la sfârșitul programului.</p>
       </div>
     </div>
 
@@ -150,7 +156,7 @@
         </div>
       </div>
       <div class="panel" data-pane="pasi">
-        <div class="label"><span>Stiva: variabilele din memorie</span><button type="button" class="link" id="sMach">Vezi magistralele</button></div>
+        <div class="label"><span>Memoria: stiva și heap-ul</span><button type="button" class="link" id="sMach">Vezi magistralele</button></div>
         <div class="stackbox">
           <div class="stepbar">
             <button type="button" id="sFirst" aria-label="De la început" title="De la început">|◀</button>
@@ -247,9 +253,11 @@
       <div><dt>Comparații și logică</dt><dd>== &nbsp;!= &nbsp;&lt; &nbsp;&lt;= &nbsp;&gt; &nbsp;&gt;= &nbsp;&amp;&amp; &nbsp;|| &nbsp;!</dd></div>
       <div><dt>Decizii</dt><dd>if (a &gt; b) { ... } else { ... }</dd></div>
       <div><dt>Repetiții</dt><dd>while (n &gt; 0) { ... }<br>for (int i = 1; i &lt;= n; i++) { ... }<br>do { ... } while (n &gt; 0);<br>break; &nbsp;continue;</dd></div>
+      <div><dt>Pointeri</dt><dd>int *p = &amp;a; &nbsp;*p = 6;<br>p = nullptr; &nbsp;if (p != nullptr) { ... }</dd></div>
+      <div><dt>Heap</dt><dd>int *p = new int(7);<br>long long *q = new long long;<br>delete p;</dd></div>
       <div><dt>Funcții</dt><dd>int suma(int a, int b) { return a + b; }<br>void schimba(int *a, int *b) { ... }<br>(scrise deasupra lui main)</dd></div>
     </dl>
-    <p>Aici lucrăm doar cu numere întregi: <code>int</code> (până la 2147483647) și <code>long long</code>, pentru numere mai mari (până la 9223372036854775807). Ca un calcul cu int să nu iasă din int, scrie <code>(long long)a * b</code> sau <code>1LL * a * b</code>. Împărțirea <code>/</code> dă câtul, iar <code>%</code> dă restul. Numerele cu virgulă, caracterele, șirurile, vectorii, referințele (<code>int &amp;</code>) și funcțiile din biblioteci (<code>sqrt</code>, <code>max</code>…) nu sunt disponibile.</p>
+    <p>Aici lucrăm doar cu numere întregi: <code>int</code> (până la 2147483647) și <code>long long</code>, pentru numere mai mari (până la 9223372036854775807). Ca un calcul cu int să nu iasă din int, scrie <code>(long long)a * b</code> sau <code>1LL * a * b</code>. Împărțirea <code>/</code> dă câtul, iar <code>%</code> dă restul. Numerele cu virgulă, caracterele, șirurile, vectorii (nici <code>new int[n]</code>), calculele cu pointeri (<code>p + 1</code>), pointerii la pointeri (<code>int **</code>), referințele (<code>int &amp;</code>) și funcțiile din biblioteci (<code>sqrt</code>, <code>max</code>…) nu sunt disponibile.</p>
   </section>
 
   <nav class="tabs" id="tabs" aria-label="Părțile caietului de lucru">
