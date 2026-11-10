@@ -329,7 +329,7 @@ function sec(name: Sec) {
     if (!MOBILE.matches) window.scrollTo(0, 0);
     if (name === 'caiet') paneTabs();
   }
-  // The memory lessons have an address per page (#stiva, #heap, #impreuna).
+  // The memory lessons have an address per page (#stiva, #pointeri, #heap, #impreuna).
   const h = name === 'memorie' ? LECTII[lec].id : name;
   if (location.hash.slice(1) !== h) history[booted ? 'pushState' : 'replaceState'](null, '', '#' + h);
 }

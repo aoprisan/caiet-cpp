@@ -396,7 +396,7 @@ t('heap: explain, machine view and memory sentences', () => {
   assert.match(said.at(-1)!, /În heap a rămas cutia „heap 2” fără delete: programul a uitat s-o elibereze\.$/);
 });
 t('lectii: every program does what its page says', () => {
-  assert.deepEqual(LECTII.map(l => l.id), ['stiva', 'heap', 'impreuna']);
+  assert.deepEqual(LECTII.map(l => l.id), ['stiva', 'pointeri', 'heap', 'impreuna']);
   for (const l of LECTII) for (const q of l.programe) {
     const what = l.id + ': ' + q.name, a = q.asteapta;
     let r: ReturnType<ReturnType<typeof compile>['run']> | undefined, e: CppError | undefined;
@@ -414,7 +414,7 @@ t('lectii: every program does what its page says', () => {
   const c = compile(LECTII[0].programe[0].code).run('');
   const adrOf = (name: string) => c.trace.find(s => s.vars.some(v => v[0] === name))!.vars.find(v => v[0] === name)![5];
   assert.equal(adrOf('b'), adrOf('c'));
-  const h = compile(LECTII[1].programe[0].code).run('');
+  const h = compile(LECTII.find(l => l.id === 'heap')!.programe[0].code).run('');
   assert.ok(h.trace.some(s => s.heap.some(x => x[0] === 'heap 3' && x[2] === '0x8000')));
   // „Verifică-te”: the right answer is what the code really does.
   for (const l of LECTII) {

@@ -1,4 +1,4 @@
-// The lessons on memory („Stiva și heap-ul”): three pages (the stack, the heap, both), each with a short text and
+// The lessons on memory („Stiva și heap-ul”): four pages (the stack, why pointers, the heap, both), each with a short text and
 // programs to run and replay step by step, some of them with a mistake on purpose. No DOM access.
 // Text: paragraphs with `cod` and **bold**; tests run every program and check what it is meant to show.
 
@@ -71,6 +71,51 @@ export const LECTII: Lectie[] = [
         code: 'int dublu(int x) {\n    x = x * 2;\n    return x;\n}\n\nint main() {\n    int x = 3;\n    int y = dublu(x);\n    cout << x;\n    return 0;\n}',
         ask: 'Ce afișează?', options: ['3', '6', 'eroare'], ok: 0, asteapta: { ok: '3' },
         why: 'dublu primește un cadru al lui, cu o cutie x a lui, în care se copiază 3. Dublează cutia din cadrul lui, nu x-ul lui main.',
+      },
+    ],
+  },
+  {
+    id: 'pointeri', titlu: 'De ce pointeri?',
+    text: [
+      'Ai văzut că o funcție primește pe stivă un cadru al ei. Parametrii ei sunt cutii noi, în care se **copiază** numerele date la apel. Funcția lucrează pe copii, iar cutiile lui main rămân neatinse. De obicei e bine așa.',
+      'Dar uneori **vrei** ca funcția să schimbe o cutie din main. De exemplu, o funcție care schimbă între ele două numere: `void schimba(int x, int y)` schimbă doar copiile, iar în main nu se întâmplă nimic.',
+      'Gândește-te la un prieten care trebuie să-ți ude florile cât ești plecat. Dacă îi dai o **poză** cu florile, adică o copie, nu folosește la nimic. Îi dai **adresa** casei: așa ajunge la florile adevărate. Pointerul este adresa.',
+      'Așa că îi dai funcției **adresele** cutiilor: `schimba(&a, &b)`. Parametrii ei sunt pointeri, `int *x`, iar prin `*x` și `*y` ea lucrează chiar în cutiile lui a și b.',
+      'Tot așa, o funcție poate da **mai multe rezultate**. `return` dă unul singur, dar celelalte pot fi puse în cutiile spre care arată pointerii primiți.',
+      'Mai e un motiv, pe pagina următoare: cutiile din **heap** nu au nume. Singurul mod de a ajunge la ele este printr-un pointer.',
+    ],
+    programe: [
+      {
+        name: 'Greșeală: schimbă copiile', inp: '', asteapta: { ok: '3 8\n' },
+        nota: 'schimba primește în cadrul ei cutiile x și y, cu copii ale lui a și b. Le schimbă între ele, dar cadrul pleacă la sfârșit, iar a și b au rămas 3 și 8.',
+        code: H + 'void schimba(int x, int y) {\n    int aux = x;\n    x = y;\n    y = aux;\n}\n\nint main() {\n    int a = 3, b = 8;\n    schimba(a, b);\n    cout << a << " " << b << endl;\n    return 0;\n}\n',
+      },
+      {
+        name: 'Schimbă prin pointeri', inp: '', asteapta: { ok: '8 3\n' },
+        nota: 'Acum x și y țin adresele lui a și b. *x este chiar cutia a, deci schimbarea se face în cutiile lui main și rămâne după ce cadrul pleacă.',
+        code: H + 'void schimba(int *x, int *y) {\n    int aux = *x;\n    *x = *y;\n    *y = aux;\n}\n\nint main() {\n    int a = 3, b = 8;\n    schimba(&a, &b);\n    cout << a << " " << b << endl;\n    return 0;\n}\n',
+      },
+      {
+        name: 'Două rezultate deodată', inp: '9 4', asteapta: { ok: 'Cel mai mic: 4\nCel mai mare: 9\n' },
+        nota: 'minmax nu are return. Pune cele două rezultate direct în cutiile mic și mare ale lui main, prin pointerii pmic și pmare.',
+        code: H + 'void minmax(int a, int b, int *pmic, int *pmare) {\n    if (a < b) {\n        *pmic = a;\n        *pmare = b;\n    } else {\n        *pmic = b;\n        *pmare = a;\n    }\n}\n\nint main() {\n    int a, b, mic, mare;\n    cin >> a >> b;\n    minmax(a, b, &mic, &mare);\n    cout << "Cel mai mic: " << mic << endl;\n    cout << "Cel mai mare: " << mare << endl;\n    return 0;\n}\n',
+      },
+    ],
+    intrebari: [
+      {
+        code: 'void pune(int x) {\n    x = 7;\n}\n\nint main() {\n    int a = 1;\n    pune(a);\n    cout << a;\n    return 0;\n}',
+        ask: 'Ce afișează?', options: ['1', '7', 'eroare'], ok: 0, asteapta: { ok: '1' },
+        why: 'pune primește o copie a lui a, în cutia x a ei. Pune 7 în copie, iar a rămâne 1.',
+      },
+      {
+        code: 'void pune(int *x) {\n    *x = 7;\n}\n\nint main() {\n    int a = 1;\n    pune(&a);\n    cout << a;\n    return 0;\n}',
+        ask: 'Ce afișează?', options: ['1', '7', 'eroare'], ok: 1, asteapta: { ok: '7' },
+        why: 'Acum pune primește adresa lui a. *x este chiar cutia a, deci 7 ajunge în a.',
+      },
+      {
+        code: 'void creste(int *x) {\n    *x = *x + 1;\n}\n\nint main() {\n    int a = 5;\n    creste(&a);\n    creste(&a);\n    cout << a;\n    return 0;\n}',
+        ask: 'Ce afișează?', options: ['5', '6', '7'], ok: 2, asteapta: { ok: '7' },
+        why: 'Fiecare apel adună 1 chiar în cutia a: 5, apoi 6, apoi 7.',
       },
     ],
   },
