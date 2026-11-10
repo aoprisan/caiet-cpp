@@ -22,6 +22,7 @@
       <a href="#start" data-go="start"><i aria-hidden="true">▦</i><span><b>Început</b><small>Cum lucrează calculatorul</small></span></a>
       <a href="#caiet" data-go="caiet"><i aria-hidden="true">{ }</i><span><b>Caiet</b><small>Scrie programe și rulează-le</small></span></a>
       <a href="#probleme" data-go="probleme"><i aria-hidden="true">≡</i><span><b>Probleme</b><small>Probleme de pe pbinfo.ro</small></span></a>
+      <a href="#stiva" data-go="memorie"><i aria-hidden="true">▤</i><span><b>Stiva și heap-ul</b><small>Unde stau cutiile în memorie</small></span></a>
       <a href="#masina" data-go="masina"><i aria-hidden="true">⚙</i><span><b>Pe dinăuntru</b><small>Procesorul, memoria, magistralele</small></span></a>
       <a href="#ajutor" data-go="ajutor"><i aria-hidden="true">?</i><span><b>Ajutor</b><small>Ce poți folosi în program</small></span></a>
     </nav>
@@ -67,6 +68,7 @@
         <p>Cutiile variabilelor stau într-o parte a memoriei numită <b>stivă</b>. Ca la un teanc de farfurii: fiecare <code>int</code> nou pune o cutie <b>deasupra</b> celorlalte, în vârf.</p>
         <p>O atribuire ca <code>a = 6;</code> nu pune o cutie nouă: schimbă numărul din cutia <b>a</b>, acolo unde stă ea pe stivă.</p>
         <p>La <code>}</code>, cutiile luate în blocul acela sunt scoase de sus: ultima pusă pleacă prima. Locul lor se refolosește. Panoul „Memoria” de lângă program îți arată asta la fiecare pas.</p>
+        <p><a href="#stiva">Lecția despre stivă →</a></p>
       </div>
       <div class="icard">
         <div class="ipic ptr" aria-hidden="true"><span>p</span><b>•</b><em>→</em><span>a</span><b>5</b></div>
@@ -79,6 +81,7 @@
         <h3>Heap-ul</h3>
         <p>Mai există o parte a memoriei, <b>heap-ul</b>. <code>int *p = new int(7);</code> cere de acolo o cutie nouă, cu 7 în ea, și pune adresa ei în p. Cutia nu are nume: o folosești prin <code>*p</code>.</p>
         <p>O cutie din heap <b>nu pleacă la <code>}</code></b>. Rămâne până scrii <code>delete p;</code> Dacă uiți de ea, ocupă degeaba memoria până la sfârșitul programului.</p>
+        <p><a href="#heap">Lecția despre heap →</a></p>
       </div>
     </div>
 
@@ -174,6 +177,48 @@
       </div>
     </div>
   </div>
+  </section>
+
+  <section class="lectii" data-sec="memorie" id="memorie" aria-labelledby="lT">
+    <h2 id="lT">Stiva și heap-ul: unde stau cutiile</h2>
+    <nav class="lpick" id="lPick" aria-label="Lecțiile despre memorie"></nav>
+    <article class="lpage">
+      <h3 id="lTitlu"></h3>
+      <div class="ltext" id="lText"></div>
+      <div class="lgrid">
+        <div class="lleft">
+          <div class="dpick" id="lProg" role="group" aria-label="Alege programul"></div>
+          <p class="lnota" id="lNota"></p>
+          <div class="lcodebox">
+            <pre class="lcode" id="lCode"></pre>
+          </div>
+          <div class="lacts">
+            <button type="button" class="run" id="lRun">▶ Rulează</button>
+            <button type="button" class="pbtn" id="lPlay">⏵ Redă pas cu pas</button>
+            <button type="button" class="link" id="lOpen">✎ Schimbă-l în caiet</button>
+          </div>
+          <p class="linp" id="lInL">Date de intrare (ce citește cin): <code id="lIn"></code></p>
+          <div class="label">Ce afișează programul</div>
+          <div class="out"><pre id="lOut"></pre><p id="lStatus" hidden></p></div>
+        </div>
+        <div class="lright">
+          <div class="stackbox">
+            <div class="stepbar">
+              <button type="button" id="lFirst" aria-label="De la început" title="De la început">|◀</button>
+              <button type="button" id="lPrev" aria-label="Pasul dinainte" title="Pasul dinainte">◀</button>
+              <button type="button" id="lNext" aria-label="Pasul următor" title="Pasul următor">▶</button>
+              <button type="button" id="lLast" aria-label="La sfârșit" title="La sfârșit">▶|</button>
+              <input type="range" id="lRange" min="0" max="0" value="0" aria-label="Pasul curent">
+            </div>
+            <p id="lLabel" class="llabel"></p>
+            <pre class="mob" id="lLine" hidden></pre>
+            <p id="lSay" class="smem" aria-live="polite"></p>
+            <div id="lMem" class="memv"></div>
+          </div>
+        </div>
+      </div>
+      <div class="lnav"><button type="button" class="pbtn" id="lBack">← Înapoi</button><button type="button" class="pbtn" id="lFwd">Mai departe →</button></div>
+    </article>
   </section>
 
   <section class="masina" data-sec="masina" id="masina" aria-labelledby="mT">

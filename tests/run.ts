@@ -6,6 +6,7 @@ import { note, matches, same, verifica, blocuri, pentruPbinfo, type Problema } f
 import { DEMOS, INTREBARI, memorie } from '../src/intro.js';
 import { MASINI, masina } from '../src/masina.js';
 import { schimbare, spune } from '../src/stiva.js';
+import { LECTII, html } from '../src/lectii.js';
 
 const H = '#include <iostream>\nusing namespace std;\nint main(){\n', F = '\nreturn 0;}';
 const out = (body: string, inp?: string) => compile(H + body + F).run(inp || '').out;
@@ -393,5 +394,28 @@ t('heap: explain, machine view and memory sentences', () => {
   assert.ok(said.includes('Se ia o cutie nouă de pe stivă pentru p. new ia o cutie nouă din heap, „heap 1”, la adresa 0x8000. Ea rămâne acolo până la delete, chiar și după „}”.'), said.join('\n'));
   assert.ok(said.includes('delete eliberează cutia „heap 1” din heap (adresa 0x8000): locul ei poate fi dat de următorul new.'));
   assert.match(said.at(-1)!, /În heap a rămas cutia „heap 2” fără delete: programul a uitat s-o elibereze\.$/);
+});
+t('lectii: every program does what its page says', () => {
+  assert.deepEqual(LECTII.map(l => l.id), ['stiva', 'heap', 'impreuna']);
+  for (const l of LECTII) for (const q of l.programe) {
+    const what = l.id + ': ' + q.name, a = q.asteapta;
+    let r: ReturnType<ReturnType<typeof compile>['run']> | undefined, e: CppError | undefined;
+    try { r = compile(q.code).run(q.inp) } catch (x) { if (!(x instanceof CppError)) throw x; e = x }
+    if ('eroare' in a) { assert.ok(e && e.kind === 'run', what); assert.match(e!.message, new RegExp(a.eroare), what); continue }
+    assert.ok(r, what + ': ' + e?.message);
+    if ('ok' in a) { assert.equal(r!.out, a.ok, what); assert.deepEqual(r!.end.heap, [], what + ': nothing left on the heap') }
+    else { assert.equal(r!.out, a.out, what); assert.deepEqual(r!.end.heap.map(h => h[0]), a.heap, what) }
+    assert.ok(!r!.cut, what + ': short enough to replay');
+    // Every page shows boxes both coming and going.
+    const st = [...r!.trace, r!.end];
+    assert.ok(st.some((s, k) => k > 0 && spune(schimbare(st[k - 1], s), s)), what);
+  }
+  // What the notes promise: c takes b's address; heap 3 gets heap 1's place.
+  const c = compile(LECTII[0].programe[0].code).run('');
+  const adrOf = (name: string) => c.trace.find(s => s.vars.some(v => v[0] === name))!.vars.find(v => v[0] === name)![5];
+  assert.equal(adrOf('b'), adrOf('c'));
+  const h = compile(LECTII[1].programe[0].code).run('');
+  assert.ok(h.trace.some(s => s.heap.some(x => x[0] === 'heap 3' && x[2] === '0x8000')));
+  assert.equal(html('`int *p` și **heap** <b>'), '<code>int *p</code> și <b>heap</b> &lt;b&gt;');
 });
 console.log(n + ' tests passed');

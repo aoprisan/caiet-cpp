@@ -11,9 +11,9 @@ export type ErrorKind = 'compile' | 'run';
  * One variable as seen by the stepper: name, value (undefined = no value yet), is it global, for a pointer
  * what it points to (the variable's name, a heap box's name like „heap 1”, „nullptr”, or the name followed by
  * „(nu mai există)” once that box left the stack, or „(eliberată cu delete)”), and for a local the function call it
- * belongs to (an index in `Snapshot.calls`).
+ * belongs to (an index in `Snapshot.calls`), and its made-up address (the one `cout << &a` prints).
  */
-export type VarView = [name: string, value: Val | undefined, global: boolean, to?: string, call?: number];
+export type VarView = [name: string, value: Val | undefined, global: boolean, to?: string, call?: number, adr?: string];
 /** A box on the heap (taken with `new`, given back with `delete`): its name („heap 1”), value and address. */
 export type HeapView = [name: string, value: Val | undefined, adr: string];
 /** `calls` are the functions running at that moment, main first, the one running now last; `heap` the boxes taken with new
@@ -222,10 +222,10 @@ export function compile(src: string, opt: Options = {}): Program {
     const v: VarView[] = [];
     for (const s of live) {
       const x = mem[s], k = gl[s] ? undefined : callOf[s];
-      if (!isPtr[s] || x === undefined) v.push([names[s], x, !!gl[s], undefined, k]);
+      if (!isPtr[s] || x === undefined) v.push([names[s], x, !!gl[s], undefined, k, addr(s)]);
       else {
         const t = (x as number) - 1;
-        v.push([names[s], x, !!gl[s], x === 0 ? 'nullptr' : names[t] + (alive[t] ? '' : heap[t] ? ' (eliberată cu delete)' : ' (nu mai există)'), k]);
+        v.push([names[s], x, !!gl[s], x === 0 ? 'nullptr' : names[t] + (alive[t] ? '' : heap[t] ? ' (eliberată cu delete)' : ' (nu mai există)'), k, addr(s)]);
       }
     }
     return { line, vars: v, out: outLen, calls: calls.slice(), heap: hlive.map(s => [names[s], mem[s], addr(s)]) };
