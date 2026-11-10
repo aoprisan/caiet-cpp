@@ -240,7 +240,8 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .qask{font-weight:700}
 .qitem pre{margin:0; padding:6px 10px; font:400 15px/22px var(--mono); background:var(--bg); border-radius:4px; overflow-x:auto}
 .qitem pre .kw{color:var(--hl-kw)} .qitem pre .num{color:var(--hl-num)}
-.qopts{display:flex; gap:6px}
+.qopts{display:flex; flex-wrap:wrap; gap:6px}
+.lqt{margin:18px 0 2px} .lqh{margin:0 0 8px; color:var(--muted)}
 .qopts button{min-width:52px; font-family:var(--mono)}
 .qopts button.yes,.qwhy.yes{background:var(--ok-bg); color:var(--ok); border-color:currentColor}
 .qopts button.no,.qwhy.no{background:var(--err-bg); color:var(--err); border-color:currentColor}

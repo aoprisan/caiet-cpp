@@ -599,7 +599,8 @@ $('dOpen').addEventListener('click', () => {
   ex.value = String(demo); load(ex.value); run(); showStep(0);
   if (MOBILE.matches) tab('pasi'); else sec('caiet');
 });
-INTREBARI.forEach((q, k) => {
+/** One quiz question: code, short answers to click, and why the right one is right. */
+function quizItem(q: { code: string; ask: string; options: (number | string)[]; ok: number; why: string }, k: number): HTMLElement {
   const box = el('div', 'qitem'), pre = el('pre'), row = el('div', 'qopts'), why = el('p', 'qwhy');
   pre.innerHTML = paint(q.code); why.hidden = true;
   box.append(el('p', 'qask', (k + 1) + '. ' + q.ask), pre, row, why);
@@ -613,8 +614,9 @@ INTREBARI.forEach((q, k) => {
     });
     row.append(b);
   });
-  $('quiz').append(box);
-});
+  return box;
+}
+INTREBARI.forEach((q, k) => $('quiz').append(quizItem(q, k)));
 $('iGo').addEventListener('click', () => { store.set('caiet.intro', 'citit'); if (MOBILE.matches) tab('cod'); else sec('caiet') });
 showDemo(0);
 
@@ -640,6 +642,7 @@ function lectie(k: number, j = 0, go = true) {
     lText.insertAdjacentHTML('beforeend', '<table class="ltable"><thead><tr>' + head.map(c => '<th>' + html(c) + '</th>').join('') + '</tr></thead><tbody>'
       + rows.map(r => '<tr>' + r.map((c, i) => (i ? '<td>' : '<th>') + html(c) + (i ? '</td>' : '</th>')).join('') + '</tr>').join('') + '</tbody></table>');
   }
+  $('lQuiz').replaceChildren(...L.intrebari.map(quizItem));
   lProgEl.innerHTML = '';
   L.programe.forEach((q, i) => {
     const b = el('button', 'pbtn', q.name); b.type = 'button';

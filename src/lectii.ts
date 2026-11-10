@@ -10,6 +10,13 @@ export interface ProgramLectie {
   name: string; code: string; inp: string; nota: string;
   asteapta: { ok: string } | { eroare: string } | { heap: string[]; out: string };
 }
+/** A „Verifică-te” question: a piece of code (the body of main, or a whole program if it has its own main), a
+ * question and short answers. Tests run the code: the right answer is its output, „eroare…” for a run-time or
+ * compile error matching `asteapta.eroare`, or the number of boxes left on the heap. */
+export interface IntrebareLectie {
+  code: string; ask: string; options: string[]; ok: number; why: string;
+  asteapta: { ok: string } | { eroare: string } | { heap: string[]; out: string };
+}
 export interface Lectie {
   /** Also the address of the page (#stiva). */
   id: string;
@@ -19,6 +26,8 @@ export interface Lectie {
   /** An optional comparison table: a header row, then rows. */
   tabel?: string[][];
   programe: ProgramLectie[];
+  /** Questions to check yourself, at the end of the page. */
+  intrebari: IntrebareLectie[];
 }
 
 export const LECTII: Lectie[] = [
@@ -47,6 +56,23 @@ export const LECTII: Lectie[] = [
         code: H + 'int main() {\n    int *p = nullptr;\n    {\n        int b = 4;\n        p = &b;\n        cout << *p << endl;\n    }\n    int c = 9;\n    cout << *p << endl;   // b nu mai există!\n    return 0;\n}\n',
       },
     ],
+    intrebari: [
+      {
+        code: 'int a = 5;\n{\n    int b = a + 1;\n    a = b;\n}\ncout << a;', ask: 'Ce afișează?', options: ['5', '6', 'eroare'], ok: 1,
+        asteapta: { ok: '6' },
+        why: 'b pleacă de pe stivă la }, dar a stă sub ea și rămâne. Înainte de }, a primise numărul din b, adică 6.',
+      },
+      {
+        code: '{\n    int b = 4;\n}\ncout << b;', ask: 'Ce se întâmplă?', options: ['afișează 4', 'eroare'], ok: 1,
+        asteapta: { eroare: 'b' },
+        why: 'b a plecat de pe stivă la }. După acolada aceea, numele b nu mai înseamnă nimic, iar programul nici nu pornește.',
+      },
+      {
+        code: 'int dublu(int x) {\n    x = x * 2;\n    return x;\n}\n\nint main() {\n    int x = 3;\n    int y = dublu(x);\n    cout << x;\n    return 0;\n}',
+        ask: 'Ce afișează?', options: ['3', '6', 'eroare'], ok: 0, asteapta: { ok: '3' },
+        why: 'dublu primește un cadru al lui, cu o cutie x a lui, în care se copiază 3. Dublează cutia din cadrul lui, nu x-ul lui main.',
+      },
+    ],
   },
   {
     id: 'heap', titlu: 'Heap-ul',
@@ -54,7 +80,8 @@ export const LECTII: Lectie[] = [
       'Uneori vrei o cutie care **să nu plece** la `}`. O ceri din altă parte a memoriei, **heap-ul**, cu `new`: `int *p = new int(5);` face acolo o cutie cu 5 și pune adresa ei în pointerul p.',
       'Cutia din heap **nu are nume**. O folosești doar prin pointer: `*p` este cutia spre care arată p. Aici le numim „heap 1”, „heap 2”, ca să le deosebești.',
       'Cutia rămâne în heap până o eliberezi tu, cu `delete p;`. Abia atunci locul ei poate fi dat altei cutii, la următorul `new`.',
-      'Două greșeli des întâlnite: să folosești cutia **după** `delete` și să **uiți** de `delete`. O cutie uitată ocupă memoria degeaba până la sfârșitul programului: se numește „scurgere de memorie” (memory leak).',
+      'Seamănă cu **garderoba** de la teatru. Lași haina și primești un bon cu un număr. Haina este cutia din heap, bonul este pointerul: cu el o găsești. Haina stă acolo cât timp vrei tu, iar `delete` înseamnă să dai bonul înapoi și să-ți iei haina.',
+      'Două greșeli des întâlnite: să folosești cutia **după** `delete` (ca și cum ai cere haina cu un bon pe care l-ai dat deja înapoi) și să **uiți** de `delete` (ca o haină uitată la garderobă). O cutie uitată ocupă memoria degeaba până la sfârșitul programului: se numește „scurgere de memorie” (memory leak).',
     ],
     programe: [
       {
@@ -73,6 +100,23 @@ export const LECTII: Lectie[] = [
         code: H + 'int main() {\n    int *p = new int(3);\n    *p = *p * 4;\n    cout << *p << endl;\n    return 0;   // lipsește delete p;\n}\n',
       },
     ],
+    intrebari: [
+      {
+        code: 'int *p = nullptr;\n{\n    int *q = new int(8);\n    p = q;\n}\ncout << *p;\ndelete p;', ask: 'q pleacă de pe stivă la }. Ce afișează?',
+        options: ['8', 'eroare'], ok: 0, asteapta: { ok: '8' },
+        why: 'Pleacă doar pointerul q, adică bonul. Cutia din heap rămâne la locul ei, iar p ține minte adresa ei.',
+      },
+      {
+        code: 'int *p = new int(3);\ndelete p;\ncout << *p;', ask: 'Ce afișează?', options: ['3', 'eroare'], ok: 1,
+        asteapta: { eroare: 'eliberată cu delete' },
+        why: 'După delete, cutia nu mai e a programului, chiar dacă p ține minte adresa ei. Ai dat bonul înapoi: haina nu mai e a ta.',
+      },
+      {
+        code: 'int *p = new int(1);\nint *q = new int(2);\ndelete p;', ask: 'Câte cutii rămân în heap la sfârșit?', options: ['0', '1', '2'], ok: 1,
+        asteapta: { heap: ['heap 2'], out: '' },
+        why: 'Două new, un singur delete: cutia spre care arată q rămâne în heap. Ar fi trebuit și delete q;.',
+      },
+    ],
   },
   {
     id: 'impreuna', titlu: 'Stiva și heap-ul împreună',
@@ -86,6 +130,7 @@ export const LECTII: Lectie[] = [
       ['Are nume?', 'da: a', 'nu: o găsești prin pointer, `*p`'],
       ['Când pleacă', 'singură, la `}` sau la sfârșitul funcției', 'doar la `delete p;`'],
       ['Adresele (aici)', 'de la 0x1000', 'de la 0x8000'],
+      ['Seamănă cu', 'un teanc de farfurii: iei și pui doar sus', 'o garderobă: lași haina, primești un bon'],
     ],
     programe: [
       {
@@ -102,6 +147,23 @@ export const LECTII: Lectie[] = [
         name: 'Greșeală: adresa pierdută', inp: '', asteapta: { heap: ['heap 1'], out: '2\n' },
         nota: 'p primește adresa lui „heap 2” și uită adresa lui „heap 1”. Acum nimeni nu mai poate elibera „heap 1”: rămâne în heap până la sfârșit.',
         code: H + 'int main() {\n    int *p = new int(1);\n    p = new int(2);   // adresa lui heap 1 s-a pierdut\n    cout << *p << endl;\n    delete p;\n    return 0;\n}\n',
+      },
+    ],
+    intrebari: [
+      {
+        code: 'void pune(int *x) {\n    *x = 5;\n}\n\nint main() {\n    int *p = new int(0);\n    pune(p);\n    cout << *p;\n    delete p;\n    return 0;\n}',
+        ask: 'Cadrul lui pune pleacă la sfârșitul funcției. Ce afișează?', options: ['0', '5', 'eroare'], ok: 1, asteapta: { ok: '5' },
+        why: 'x este o copie a bonului, deci arată spre aceeași cutie din heap. Pleacă x, dar 5 rămâne în cutie.',
+      },
+      {
+        code: 'int *p = new int(4);\nint *q = p;\ndelete q;\ncout << *p;', ask: 'p și q arată spre aceeași cutie. Ce afișează?', options: ['4', 'eroare'], ok: 1,
+        asteapta: { eroare: 'eliberată cu delete' },
+        why: 'q = p copiază doar adresa: e tot o haină, cu două bonuri. delete q o eliberează, așa că nici p nu o mai poate folosi.',
+      },
+      {
+        code: 'for (int i = 1; i <= 3; i++) {\n    int *p = new int(i);\n}', ask: 'Câte cutii rămân în heap la sfârșit?', options: ['0', '1', '3'], ok: 2,
+        asteapta: { heap: ['heap 1', 'heap 2', 'heap 3'], out: '' },
+        why: 'La fiecare tur, p pleacă de pe stivă la }, dar cutia din heap nu: e un new fără delete. Trei tururi, trei cutii uitate.',
       },
     ],
   },
