@@ -81,8 +81,8 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .layer{position:absolute; top:0; left:0; padding:12px; pointer-events:none}
 #hl{margin:0; font:400 16px/24px var(--mono); white-space:pre; tab-size:4; color:var(--ink)}
 #band{position:absolute; left:0; width:20000px; height:24px; background:var(--cur-bg)}
-:is(#hl,#sCode) .kw{color:var(--hl-kw)} :is(#hl,#sCode) .str{color:var(--hl-str)} :is(#hl,#sCode) .num{color:var(--hl-num)}
-:is(#hl,#sCode) .com{color:var(--hl-com)} :is(#hl,#sCode) .io{color:var(--hl-io)} :is(#hl,#sCode) .pre{color:var(--hl-pre)}
+:is(#hl,#sCode,#lCode,#lLine) .kw{color:var(--hl-kw)} :is(#hl,#sCode,#lCode,#lLine) .str{color:var(--hl-str)} :is(#hl,#sCode,#lCode,#lLine) .num{color:var(--hl-num)}
+:is(#hl,#sCode,#lCode,#lLine) .com{color:var(--hl-com)} :is(#hl,#sCode,#lCode,#lLine) .io{color:var(--hl-io)} :is(#hl,#sCode,#lCode,#lLine) .pre{color:var(--hl-pre)}
 #code{position:relative; display:block; width:100%; height:100%; padding:12px; white-space:pre; overflow:auto; outline-offset:-3px; color:transparent; caret-color:var(--ink)}
 .explain{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-top:6px; min-height:5.5em}
 .explain ul{margin:6px 0 0; padding-left:1.2em; max-width:70ch}
@@ -101,7 +101,71 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .cell b{font-weight:600; overflow-wrap:anywhere}
 .cell.chg{background:var(--cur-bg)}
 .cell .q{color:var(--muted)}
+.cell .tag{margin-left:auto; font:700 .72rem/24px var(--body); color:var(--accent); text-transform:uppercase; letter-spacing:.03em}
+/* Memory animations (caiet.anim, while solving a problem): a box taken drops onto the stack, a freed box fades off. */
+.cell.nou{background:var(--cur-bg); animation:ia .5s ease-out}
+.cell.plec{border-style:dashed; color:var(--muted); animation:plec .7s ease-in .55s forwards}
+.cell.plec b{text-decoration:line-through}
+.cell.plec .tag{color:var(--err)}
+.frame.nou{animation:ia .5s ease-out}
+.frame.plec{border-style:dashed; border-color:var(--muted); animation:plec .7s ease-in .55s forwards}
+.frame.plec h3{background:var(--muted)}
+.frame.plec .cell.plec{animation:none}
+@keyframes ia{from{transform:translateY(-28px); opacity:0}}
+@keyframes plec{to{transform:translateY(-28px); opacity:0}}
+.smem{margin:0; padding:6px 10px; border-left:3px solid var(--line); color:var(--muted); font-size:.95rem; min-height:3em}
+.smem.now{border-left-color:var(--accent); color:var(--ink)}
+.stepbar .play{font-family:var(--body); white-space:nowrap}
+.panim{display:flex; gap:8px; align-items:flex-start; font-size:.92rem; cursor:pointer}
+.panim input{margin-top:3px; accent-color:var(--accent); width:18px; height:18px; flex:none}
 .none{margin:0; padding:6px 10px; color:var(--muted)}
+/* The caiet's memory: the stack and the heap side by side when there is room, else one under the other. */
+#stack,.memv{display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; align-items:start}
+.mcol{min-width:0}
+.mcol h4{margin:0 0 6px; font:700 .8rem/1.4 var(--body); text-transform:uppercase; letter-spacing:.05em; color:var(--muted)}
+.mcol.hp h4{margin-bottom:0}
+.mnote{display:block; margin-bottom:6px; color:var(--muted); font-size:.8rem}
+.frame.heap{border-color:var(--accent)}
+.frame.heap .cell{gap:8px}
+.cell .adr{font:400 .75rem/24px var(--mono); color:var(--muted)}
+.cell .adr{margin-right:auto}
+.cell .adr ~ .tag{margin-left:0}
+
+/* The memory lessons: a page picker, the text, then the program (left) beside its memory (right). */
+.lectii{display:flex; flex-direction:column; gap:14px}
+.lectii h2{font-family:var(--display); font-weight:600; font-size:1.25rem; margin:0}
+.lectii > *{flex:none}
+.lpick{display:flex; flex-wrap:wrap; gap:8px}
+.lpick button{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:8px 14px; cursor:pointer; font-weight:700; color:var(--ink)}
+.lpick button[aria-current="page"]{background:var(--accent); border-color:var(--accent); color:var(--paper)}
+.lpage{background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:14px 16px; display:flex; flex-direction:column; gap:12px}
+.lpage h3{margin:0}
+.ltext p{margin:0 0 8px; max-width:75ch}
+.ltext code{white-space:nowrap}
+.ltable{border-collapse:collapse; margin:4px 0 8px; font-size:.95rem}
+.ltable th,.ltable td{border:1px solid var(--line); padding:5px 10px; text-align:left; vertical-align:top}
+.ltable thead th{background:var(--bg)}
+.lgrid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start}
+.lleft,.lright{display:flex; flex-direction:column; gap:8px; min-width:0}
+.lnota{margin:0; padding:6px 10px; border-left:3px solid var(--hl-io); font-size:.95rem}
+.lcodebox{border:1px solid var(--line); border-radius:6px; background:var(--bg); overflow:auto; max-height:430px}
+.lcode{margin:0; padding:8px 0; font:400 15px/22px var(--mono); min-width:max-content}
+.lcode div{padding:0 10px; white-space:pre}
+.lcode .ln{display:inline-block; width:2.2em; color:var(--muted); user-select:none}
+.lcode .cur{background:var(--cur-bg); box-shadow:inset 3px 0 var(--accent)}
+.lcode .bad{background:var(--err-bg); box-shadow:inset 3px 0 var(--err)}
+.lacts{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+#lOut{margin:0; padding:10px 12px; font:400 16px/24px var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; min-height:48px}
+#lOut.empty{color:var(--muted); font-family:var(--body)}
+#lStatus{margin:0; padding:9px 12px; border-top:1px solid var(--line); font-weight:600}
+#lStatus.ok{background:var(--ok-bg); color:var(--ok)}
+#lStatus.err{background:var(--err-bg); color:var(--err)}
+.lectii .out{min-height:0}
+.llabel{margin:0; color:var(--muted); font-size:.92rem}
+.linp{margin:0; font-size:.95rem}
+.linp code{font-family:var(--mono); background:var(--bg); padding:1px 6px; border-radius:4px}
+.lnav{display:flex; justify-content:space-between; gap:8px}
+@media (max-width:760px), (pointer:coarse) and (max-height:500px){ .lgrid{grid-template-columns:1fr} .lectii{margin-bottom:12px} .lpage{padding:12px} .lright .stepbar{position:sticky; top:0; z-index:2; background:var(--paper); padding:4px 0} .lright .stepbar button{min-width:44px; min-height:44px} }
 #inp{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; height:96px; width:100%; resize:vertical}
 .out{background:var(--paper); border:1px solid var(--line); border-radius:6px; min-height:170px; display:flex; flex-direction:column}
 #out{margin:0; padding:10px 12px; font:400 16px/24px var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; flex:1}
@@ -242,6 +306,7 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 .mprog div.cur{background:var(--cur-bg); box-shadow:inset 3px 0 0 var(--accent)}
 .mprog div.r{outline:2px solid var(--c-cmd); outline-offset:-2px}
 .mdata{margin:0 8px; display:flex; flex-direction:column; gap:4px}
+.mheap{margin:6px 0 0; padding:2px 8px; font:700 .78rem/1.6 var(--body); color:var(--muted); border-top:2px dashed var(--line)}
 .mcell{display:grid; grid-template-columns:4.6em minmax(2em,auto) minmax(0,1fr); align-items:center; gap:8px; padding:3px 8px; min-height:34px;
   border:2px solid var(--ink); border-radius:4px; background:var(--paper); font-family:var(--mono); transition:background .2s}
 .mcell small{font-size:.75rem; color:var(--c-adr)}
@@ -260,7 +325,7 @@ textarea{font:400 16px/24px var(--mono); color:var(--ink); background:transparen
 /* Without motion the packet just appears where it arrives. */
 @keyframes slideL{from{transform:translateX(40px); opacity:.4}}
 @keyframes slideR{from{transform:translateX(-40px); opacity:.4}}
-@media (prefers-reduced-motion: reduce){ .pk.go{animation-duration:1ms; animation-delay:0s} .mscreen::after{animation:none} [data-pane].slideL,[data-pane].slideR{animation:none} }
+@media (prefers-reduced-motion: reduce){ .cell.nou,.frame.nou{animation:none} .cell.plec,.frame.plec{animation-duration:1ms; animation-delay:1.2s} .pk.go{animation-duration:1ms; animation-delay:0s} .mscreen::after{animation:none} [data-pane].slideL,[data-pane].slideR{animation:none} }
 
 /* Problems: list + statement side by side; the bar above the input checks the program on the examples. */
 .pbar{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:8px}
@@ -376,8 +441,8 @@ button.link{background:none; border:0; padding:0; color:var(--accent); font-weig
   .mob[hidden]{display:none}
   .follow{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:12px; font-weight:700; color:var(--accent); cursor:pointer}
   .stepbar button{min-width:44px; min-height:44px}
-  #sCode{margin:0; padding:6px 10px; font:400 16px/24px var(--mono); white-space:pre; overflow-x:auto; background:var(--cur-bg); border-radius:4px; color:var(--ink)}
-  #sCode .ln{color:var(--muted); margin-right:10px}
+  #sCode,#lLine{margin:0; padding:6px 10px; font:400 16px/24px var(--mono); white-space:pre; overflow-x:auto; background:var(--cur-bg); border-radius:4px; color:var(--ink)}
+  #sCode .ln,#lLine .ln{color:var(--muted); margin-right:10px}
   .intro{margin-bottom:12px; padding:12px; gap:10px}
   .intro h2{font-size:1.25rem}
   .dbody{grid-template-columns:minmax(0,1fr)}

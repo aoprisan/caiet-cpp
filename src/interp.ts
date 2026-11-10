@@ -9,12 +9,16 @@ export type Val = number | bigint;
 export type ErrorKind = 'compile' | 'run';
 /**
  * One variable as seen by the stepper: name, value (undefined = no value yet), is it global, for a pointer
- * what it points to (the variable's name, „nullptr”, or the name followed by „(nu mai există)” once that box left the stack),
- * and for a local the function call it belongs to (an index in `Snapshot.calls`).
+ * what it points to (the variable's name, a heap box's name like „heap 1”, „nullptr”, or the name followed by
+ * „(nu mai există)” once that box left the stack, or „(eliberată cu delete)”), and for a local the function call it
+ * belongs to (an index in `Snapshot.calls`), and its made-up address (the one `cout << &a` prints).
  */
-export type VarView = [name: string, value: Val | undefined, global: boolean, to?: string, call?: number];
-/** `calls` are the functions running at that moment, main first, the one running now last. */
-export interface Snapshot { line: number; vars: VarView[]; out: number; calls: string[] }
+export type VarView = [name: string, value: Val | undefined, global: boolean, to?: string, call?: number, adr?: string];
+/** A box on the heap (taken with `new`, given back with `delete`): its name („heap 1”), value and address. */
+export type HeapView = [name: string, value: Val | undefined, adr: string];
+/** `calls` are the functions running at that moment, main first, the one running now last; `heap` the boxes taken with new
+ * and not deleted yet, by address. */
+export interface Snapshot { line: number; vars: VarView[]; out: number; calls: string[]; heap: HeapView[] }
 /**
  * What the processor does, for the machine view (only recorded by compile(src, { bus: true })). `slot` is a box in memory;
  * a pointer's value is its target slot + 1 (0 = nullptr). `fetch` brings a line of the program from memory, `decl` makes a box,
@@ -30,11 +34,12 @@ export type BusEvent =
   | { k: 'alu'; op: string; x: Val; y?: Val; r: Val; ptr?: boolean }
   | { k: 'in'; v: Val }
   | { k: 'out'; s: string }
-  | { k: 'free'; slots: number[]; fn?: string }
+  | { k: 'free'; slots: number[]; fn?: string; heap?: boolean }
   | { k: 'call'; name: string; line: number; n: number }
   | { k: 'ret'; name: string; v: Val };
-/** A box in memory as the machine view draws it: slot, name, value (undefined = empty), is it a pointer, its place on the stack. */
-export type Box = [slot: number, name: string, value: Val | undefined, ptr: boolean, at: number];
+/** A box in memory as the machine view draws it: slot, name, value (undefined = empty), is it a pointer, its place on the stack
+ * (or on the heap, for a box taken with new). */
+export type Box = [slot: number, name: string, value: Val | undefined, ptr: boolean, at: number, heap?: boolean];
 /** One bus event with the memory right after it, how much was printed and the line being run. */
 export interface BusStep { e: BusEvent; mem: Box[]; out: number; line: number }
 export interface RunResult { out: string; steps: number; trace: Snapshot[]; end: Snapshot; cut: boolean; bus: BusStep[]; busCut: boolean }
@@ -46,6 +51,9 @@ export interface Options { /** record what the processor does over the buses (sl
  * A box freed at `}` leaves its place to the next box declared, which then gets the same address.
  */
 export const adresa = (at: number) => '0x' + (0x1000 + 4 * at).toString(16);
+/** The made-up address of the heap box at place `at` on the heap (4 bytes per place, from 0x8000). A box given back with
+ * delete leaves its place free for the next new. */
+export const adresaHeap = (at: number) => '0x' + (0x8000 + 4 * at).toString(16);
 
 export class CppError extends Error {
   readonly isCpp = true;
@@ -65,7 +73,7 @@ type TokType = 'num' | 'id' | 'op' | 'str' | 'eof';
 /** `v` is the source text (or the decoded string for `str`); `n` is the value of an int `num`, `big` of a long long one. */
 interface Tok { t: TokType; v: string; line: number; n?: number; big?: bigint }
 
-const KEY = new Set(['int', 'long', 'void', 'if', 'else', 'while', 'for', 'do', 'return', 'break', 'continue', 'cin', 'cout', 'endl', 'using', 'namespace', 'std', 'main', 'nullptr']);
+const KEY = new Set(['int', 'long', 'void', 'if', 'else', 'while', 'for', 'do', 'return', 'break', 'continue', 'cin', 'cout', 'endl', 'using', 'namespace', 'std', 'main', 'nullptr', 'new', 'delete']);
 const NOTYPE = new Set(['float', 'double', 'char', 'string', 'bool', 'short', 'unsigned']);
 /** Library functions students reach for; they get a message saying to write their own. */
 const LIB = new Set(['sqrt', 'pow', 'abs', 'max', 'min', 'swap', 'floor', 'ceil', 'round', 'printf', 'scanf']);
@@ -121,6 +129,7 @@ function lex(src: string): { toks: Tok[]; inc: boolean } {
       if (c === "'" && s.length !== 1) throw E("Între apostrofuri trebuie să fie un singur caracter. Pentru text folosește ghilimele: \"...\"", line);
       toks.push({ t: 'str', v: s, line }); i = j + 1; continue;
     }
+    if (c === '[' || c === ']') throw E('Vectorii (cu paranteze pătrate [ ]) nu sunt disponibili în acest caiet.', line);
     const op = OPS.find(o => src.startsWith(o, i));
     if (op) { toks.push({ t: 'op', v: op, line }); i += op.length; continue }
     throw E('Caracterul „' + c + '” nu are ce căuta aici.', line);
@@ -159,6 +168,8 @@ export function compile(src: string, opt: Options = {}): Program {
   let mem: (Val | undefined)[] = [], out: string[] = [], live: number[] = [], trace: Snapshot[] = [];
   let names: string[] = [], gl: boolean[] = [], isPtr: boolean[] = [], isLL: boolean[] = [], alive: boolean[] = [], taken: boolean[] = [];
   let callOf: number[] = [], freeSlots: number[] = [], nslots = 0;
+  // The heap: boxes taken with new (heap[s]), alive until delete, in hlive by address. hn numbers them („heap 1”, …).
+  let heap: boolean[] = [], hlive: number[] = [], hn = 0;
   // Where each box sits on the stack (in places of 4 bytes). A freed box keeps its last place,
   // so a pointer to it still prints the address it had.
   let pos: number[] = [];
@@ -169,7 +180,7 @@ export function compile(src: string, opt: Options = {}): Program {
   let bus: BusStep[] = [], busCut = false, busLine = 0;
   function ev(e: BusEvent) {
     if (bus.length >= BMAX) { busCut = true; return }
-    bus.push({ e, mem: live.map(s => [s, names[s], mem[s], !!isPtr[s], pos[s]]), out: outLen, line: busLine });
+    bus.push({ e, mem: live.concat(hlive).map(s => heap[s] ? [s, names[s], mem[s], false, pos[s], true] : [s, names[s], mem[s], !!isPtr[s], pos[s]]), out: outLen, line: busLine });
   }
   /** The processor brings a line of the program from memory (once, even if the line has several parts). */
   function fetch(line: number) {
@@ -186,6 +197,19 @@ export function compile(src: string, opt: Options = {}): Program {
     pos[s] = t === undefined ? 0 : pos[t] + (isLL[t] ? 2 : 1);
     live.push(s); return s;
   }
+  /** A box's made-up address, on the stack or on the heap. */
+  const addr = (s: number) => heap[s] ? adresaHeap(pos[s]) : adresa(pos[s]);
+  /** new: a box on the heap, at the first free place big enough (a long long needs two). Its slot is never reused,
+   * so a pointer to it is still caught after delete. */
+  function hbox(ll: boolean): number {
+    const s = nslots++, size = ll ? 2 : 1;
+    names[s] = 'heap ' + ++hn; isPtr[s] = false; isLL[s] = ll; gl[s] = false; alive[s] = true; taken[s] = true; callOf[s] = -1; heap[s] = true;
+    mem[s] = undefined;
+    let at = 0, k = 0;
+    for (; k < hlive.length; k++) { const h = hlive[k]; if (pos[h] - at >= size) break; at = pos[h] + (isLL[h] ? 2 : 1) }
+    pos[s] = at; hlive.splice(k, 0, s);
+    return s;
+  }
   /** Takes the boxes above height L off the stack (at a block's `}`, or when the function call `fn` ends). */
   function drop(L: number, fn?: string) {
     if (live.length <= L) return;
@@ -198,10 +222,13 @@ export function compile(src: string, opt: Options = {}): Program {
     const v: VarView[] = [];
     for (const s of live) {
       const x = mem[s], k = gl[s] ? undefined : callOf[s];
-      if (!isPtr[s] || x === undefined) v.push([names[s], x, !!gl[s], undefined, k]);
-      else v.push([names[s], x, !!gl[s], x === 0 ? 'nullptr' : names[(x as number) - 1] + (alive[(x as number) - 1] ? '' : ' (nu mai există)'), k]);
+      if (!isPtr[s] || x === undefined) v.push([names[s], x, !!gl[s], undefined, k, addr(s)]);
+      else {
+        const t = (x as number) - 1;
+        v.push([names[s], x, !!gl[s], x === 0 ? 'nullptr' : names[t] + (alive[t] ? '' : heap[t] ? ' (eliberată cu delete)' : ' (nu mai există)'), k, addr(s)]);
+      }
     }
-    return { line, vars: v, out: outLen, calls: calls.slice() };
+    return { line, vars: v, out: outLen, calls: calls.slice(), heap: hlive.map(s => [names[s], mem[s], addr(s)]) };
   }
   const scopes: Map<string, Var>[] = [new Map()];
   const fns = new Map<string, Fn>();
@@ -356,12 +383,16 @@ export function compile(src: string, opt: Options = {}): Program {
     const at = () => {
       const x = a() as number;
       if (x === 0) throw E('Nu poți folosi *' + (a.vname || 'p') + ': ' + who + ' este nullptr, adică nu arată spre nicio cutie.', line, 'run');
-      if (!alive[x - 1]) throw E('Cutia „' + names[x - 1] + '”, spre care arată ' + who + ', nu mai există: a fost scoasă de pe stivă' + (callOf[x - 1] > 0 ? ' la sfârșitul funcției.' : ' la „}”.'), line, 'run');
+      if (!alive[x - 1]) throw E(heap[x - 1]
+        ? 'Cutia „' + names[x - 1] + '” din heap, spre care arată ' + who + ', a fost eliberată cu delete și nu mai poate fi folosită.'
+        : 'Cutia „' + names[x - 1] + '”, spre care arată ' + who + ', nu mai există: a fost scoasă de pe stivă' + (callOf[x - 1] > 0 ? ' la sfârșitul funcției.' : ' la „}”.'), line, 'run');
       return x - 1;
     };
     const f: Expr = () => {
       const s = at(), x = mem[s];
-      if (x === undefined) throw E('Variabila „' + names[s] + '” (spre care arată ' + who + ') este folosită înainte să primească o valoare.', line, 'run');
+      if (x === undefined) throw E(heap[s]
+        ? 'Cutia „' + names[s] + '” din heap (spre care arată ' + who + ') nu are încă o valoare. Pune una în ea (*' + (a.vname || 'p') + ' = …) sau scrie new ' + typeName(isLL[s]) + '(0).'
+        : 'Variabila „' + names[s] + '” (spre care arată ' + who + ') este folosită înainte să primească o valoare.', line, 'run');
       if (B) ev({ k: 'read', slot: s, v: x });
       return x;
     };
@@ -389,6 +420,7 @@ export function compile(src: string, opt: Options = {}): Program {
     if (isOp('+')) { const t = next(), a = unary(); noPtr(a, t); return a }
     if (isOp('!')) { const t = next(), a = truth(unary(), t); return B ? () => { const x = a(), r = x === 0 ? 1 : 0; ev({ k: 'alu', op: '!', x, r }); return r } : () => a() === 0 ? 1 : 0 }
     if (isOp('*')) { const t = next(); return deref(t, unary()) }
+    if (isId('new')) return newBox(next());
     if (isOp('&')) {
       const t = next(), a = unary();
       if (!a.at) throw E('„&” se pune în fața unei variabile, ca să îi iei adresa: &a.', t.line);
@@ -413,6 +445,26 @@ export function compile(src: string, opt: Options = {}): Program {
       const c = as(a, ty.ll), f: Expr = () => c(); f.ll = ty.ll; return f;
     }
     return postfix();
+  }
+  /** `new int`, `new int(5)`, `new int()` (0), `new long long(…)`: a new box on the heap; its value is a pointer to it. */
+  function newBox(t: Tok): Expr {
+    if (!isType(p) || isId('void')) throw E('După new scrie felul cutiei: new int sau new long long.', t.line);
+    const ty = typeSpec(), ll = ty.ll;
+    if (isOp('*')) throw E('new int* (o cutie pentru un pointer) nu este disponibil în acest caiet: pointer la pointer.', t.line);
+    let init: Expr | null = null, zero = false;
+    if (isOp('(')) {
+      next();
+      if (isOp(')')) zero = true;
+      else { const e = expr(); fits(false, ll, 'cutia din heap', e, t.line); init = as(e, ll) }
+      expect(')');
+    }
+    const f: Expr = () => {
+      const v = init ? init() : zero ? (ll ? 0n : 0) : undefined, s = hbox(ll);
+      if (B) { ev({ k: 'decl', slot: s }); if (v !== undefined) { mem[s] = v; ev({ k: 'write', slot: s, v }) } }
+      else mem[s] = v;
+      return s + 1;
+    };
+    f.ptr = true; f.ll = ll; return f;
   }
   function arith(o: string, line: number, x: Val, y: Val): Val {
     if (typeof x === 'bigint') {
@@ -497,9 +549,9 @@ export function compile(src: string, opt: Options = {}): Program {
   /** Checks that a value of `b`'s kind may be put in a box named `name` (a pointer if `ptr`, of long long if `ll`). */
   function fits(ptr: boolean, ll: boolean, name: string, b: Expr, line: number) {
     if (b.vd) throw E('Funcția „' + b.vname + '” este void: nu întoarce nicio valoare care să fie pusă în „' + name + '”.', line);
-    if (ptr && !b.ptr) throw E('Pointerul „' + name + '” poate primi doar adresa unei variabile (de exemplu &a) sau nullptr, nu un număr.', line);
+    if (ptr && !b.ptr) throw E('Pointerul „' + name + '” poate primi doar adresa unei variabile (de exemplu &a), o cutie nouă din heap (new int) sau nullptr, nu un număr.', line);
     if (!ptr && b.ptr) throw E('În „' + name + '” se pun numere, nu adrese. Pentru numărul din cutia spre care arată pointerul, scrie *' + (b.vname || 'p') + '.', line);
-    if (ptr && !b.nul && !!b.ll !== ll) throw E('Pointerul „' + name + '” arată spre o cutie ' + typeName(ll) + ', așa că poate primi doar adresa unei variabile ' + typeName(ll) + '.', line);
+    if (ptr && !b.nul && !!b.ll !== ll) throw E('Pointerul „' + name + '” arată spre o cutie ' + typeName(ll) + ', așa că poate primi doar adresa unei cutii ' + typeName(ll) + '.', line);
   }
   function expr(): Expr {
     const a = bin(0);
@@ -597,6 +649,23 @@ export function compile(src: string, opt: Options = {}): Program {
           return () => { tick(line); fetch(line); return c() !== 0 ? a() : (b ? b() : 0) };
         }
         case 'else': throw E('Acest „else” nu are un „if” înaintea lui.', line);
+        case 'delete': {
+          next(); const pt = peek(), e = expr(); noVoid(e, pt);
+          if (!e.ptr) throw E('După delete se scrie un pointer spre o cutie luată cu new, de exemplu: delete p;', line);
+          expect(';');
+          const who = e.vname ? 'pointerul „' + e.vname + '”' : 'pointerul';
+          return () => {
+            tick(line); fetch(line);
+            const x = e() as number;
+            if (x === 0) return 0; // delete nullptr does nothing, as in C++
+            const s = x - 1;
+            if (!heap[s]) throw E('Cu delete se eliberează doar cutii luate cu new, din heap. ' + (who[0].toUpperCase() + who.slice(1)) + ' arată spre „' + names[s] + '”, o cutie de pe stivă: ea se eliberează singură la „}”.', line, 'run');
+            if (!alive[s]) throw E('Cutia „' + names[s] + '” a fost deja eliberată cu delete. O cutie din heap se eliberează o singură dată.', line, 'run');
+            alive[s] = false; hlive.splice(hlive.indexOf(s), 1);
+            if (B) ev({ k: 'free', slots: [s], heap: true });
+            return 0;
+          };
+        }
         case 'while': {
           next(); const c = cond(); loops++; const b = body(); loops--;
           return () => {
@@ -673,7 +742,7 @@ export function compile(src: string, opt: Options = {}): Program {
             const lt = next();
             if (peek().t === 'str') { const s = next().v; items.push(() => s) }
             else if (isId('endl')) { next(); items.push(() => '\n') }
-            else { const e = bin(4); noVoid(e, lt); items.push(e.ptr ? () => { const x = e() as number; return x === 0 ? '0' : adresa(pos[x - 1]) } : () => String(e())) }
+            else { const e = bin(4); noVoid(e, lt); items.push(e.ptr ? () => { const x = e() as number; return x === 0 ? '0' : addr(x - 1) } : () => String(e())) }
           }
           if (isOp('>>')) throw E('La cout se folosește << (nu >>).', line);
           expect(';');
@@ -783,6 +852,7 @@ export function compile(src: string, opt: Options = {}): Program {
   return {
     run(inp?: string): RunResult {
       mem = []; names = []; gl = []; isPtr = []; isLL = []; alive = []; taken = []; callOf = []; pos = []; freeSlots = []; nslots = 0;
+      heap = []; hlive = []; hn = 0;
       G = new Array(ngl); fr = []; calls = []; retVal = 0;
       steps = 0; out = []; outLen = 0; input = String(inp || ''); ip = 0; live = []; trace = []; bus = []; busCut = false; busLine = 0; lastLine = 0;
       try {

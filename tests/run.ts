@@ -5,6 +5,8 @@ import { explain } from '../src/explain.js';
 import { note, matches, same, verifica, blocuri, pentruPbinfo, type Problema } from '../src/probleme.js';
 import { DEMOS, INTREBARI, memorie } from '../src/intro.js';
 import { MASINI, masina } from '../src/masina.js';
+import { schimbare, spune } from '../src/stiva.js';
+import { LECTII, html } from '../src/lectii.js';
 
 const H = '#include <iostream>\nusing namespace std;\nint main(){\n', F = '\nreturn 0;}';
 const out = (body: string, inp?: string) => compile(H + body + F).run(inp || '').out;
@@ -298,7 +300,7 @@ t('functions: the stepper shows one frame per call', () => {
   assert.deepEqual(r.trace.at(-1)!.vars.map(v => [v[0], v[1]]), [['a', 9]]);
 });
 t('masina: a function call', () => {
-  const m = masina(MASINI[4].code, MASINI[4].inp);
+  const m = masina(MASINI.at(-1)!.code, MASINI.at(-1)!.inp);
   assert.equal(m.out, '10');
   assert.match(m.cadre.find(c => c.fel === 'call')!.say, /sare la funcția dublu/);
   assert.match(m.cadre.find(c => c.fel === 'ret')!.say, /întoarce valoarea 10/);
@@ -317,5 +319,103 @@ t('probleme: cnp1 can be solved with long long', () => {
   const src = G + 'int main() {\nint z, l, a;\nlong long c;\ncin >> z >> l >> a >> c;\nint s = c / 1000000000000, an = c / 10000000000 % 100, ln = c / 100000000 % 100, zi = c / 1000000 % 100;\n'
     + 'if (s <= 2) an += 1900; else an += 2000;\nint v = a - an;\nif (l < ln || (l == ln && z < zi)) v--;\nif (v >= 18) cout << "Major"; else cout << "Minor";\nreturn 0;\n}';
   assert.ok(verifica(src, p).every(r => r.ok));
+});
+t('stiva: boxes taken and freed, calls started and ended', () => {
+  const r = compile('#include <iostream>\nusing namespace std;\nint dublu(int x) {\n    int y = x * 2;\n    return y;\n}\nint main() {\n    int n = 2, s = 0;\n'
+    + '    for (int i = 0; i < n; i++) {\n        int t = dublu(i);\n        s += t;\n    }\n    cout << s;\n    return 0;\n}').run('');
+  const st = [...r.trace, r.end], said = st.map((s, k) => spune(schimbare(st[k - 1], s), s)).filter(Boolean);
+  assert.deepEqual(said.slice(0, 6), [
+    'Se iau cutii noi de pe stivă pentru n și s.',
+    'Se ia o cutie nouă de pe stivă pentru i.',
+    'Se ia o cutie nouă de pe stivă pentru t. Se cheamă dublu(): pe stivă apare un loc nou pentru cutiile ei (x).',
+    'Se ia o cutie nouă de pe stivă pentru y.',
+    'Funcția dublu() s-a terminat: cutiile ei sunt eliberate și ies de pe stivă.',
+    'Cutia lui t este eliberată: iese de pe stivă la „}”.',
+  ]);
+  assert.equal(said.at(-1), 'Cutiile lui n și s sunt eliberate: ies de pe stivă la „}”, ultima pusă pleacă prima.');
+  // A box declared again in the next turn of the loop is freed at `}` and taken again, not kept.
+  const k = st.findIndex((s, j) => j > 0 && schimbare(st[j - 1], s).freed.some(v => v[0] === 't'));
+  const d = schimbare(st[k - 1], st[k]);
+  assert.deepEqual(d.freed.map(v => v[0]), ['t']); assert.deepEqual(d.taken, []); assert.equal(d.kept, 3);
+  // A recursive call is a new frame even though the function has the same name.
+  const f = compile('#include <iostream>\nusing namespace std;\nint f(int n) {\n    if (n == 0) return 0;\n    return f(n - 1);\n}\nint main() {\n    cout << f(1);\n    return 0;\n}').run('');
+  const fs = [...f.trace, f.end], deeper = fs.findIndex(s => s.calls.length === 3);
+  const dd = schimbare(fs[deeper - 1], fs[deeper]);
+  assert.deepEqual(dd.started, [2]); assert.deepEqual(dd.taken.map(v => v[0]), ['n']); assert.equal(dd.freed.length, 0);
+  assert.equal(spune(schimbare(undefined, fs[0]), fs[0]), '');
+});
+t('heap: new, delete, addresses and errors', () => {
+  assert.equal(out('int *p = new int(5);\n*p += 2;\ncout << *p << " " << p;\ndelete p;'), '7 0x8000');
+  assert.equal(out('int *p = new int;\ncin >> *p;\ncout << *p * 2;\ndelete p;', '21'), '42');
+  assert.equal(out('long long *q = new long long(3000000000);\nint *z = new int();\ncout << *q + *z;\ndelete q;\ndelete z;'), '3000000000');
+  // A place freed by delete is given to the next new (first place big enough); a long long takes two places.
+  assert.equal(out('int *a = new int(1);\nlong long *b = new long long(2);\nint *c = new int(3);\ndelete a;\ndelete c;\nint *d = new int(4);\nint *e = new int(5);\ncout << b << " " << d << " " << e;'), '0x8004 0x8000 0x800c');
+  assert.equal(out('int *p = nullptr;\ndelete p;\ncout << "ok";'), 'ok');
+  // The heap box outlives the block it was made in.
+  assert.equal(out('int *p = nullptr;\n{\n    p = new int(9);\n}\ncout << *p;\ndelete p;'), '9');
+  const r = compile(H + 'int *p = new int(1);\nint *q = new int(2);\ndelete p;' + F).run('');
+  assert.deepEqual(r.end.heap, [['heap 2', 2, '0x8004']]);
+  const mid = r.trace.find(s => s.heap.length === 2)!;
+  assert.deepEqual(mid.vars.map(v => v[3]), ['heap 1', 'heap 2']);
+  const after = compile(H + 'int *p = new int(1);\ndelete p;\ncout << 1;' + F).run('').trace.at(-1)!;
+  assert.equal(after.vars[0][3], 'heap 1 (eliberată cu delete)');
+  for (const [body, re, kind] of [
+    ['int *p = new int;\ncout << *p;', /„heap 1” din heap .* nu are încă o valoare/, 'run'],
+    ['int *p = new int(1);\ndelete p;\ncout << *p;', /a fost eliberată cu delete/, 'run'],
+    ['int *p = new int(1);\ndelete p;\ndelete p;', /deja eliberată cu delete/, 'run'],
+    ['int a = 1;\nint *p = &a;\ndelete p;', /doar cutii luate cu new.*„a”, o cutie de pe stivă/, 'run'],
+    ['int a = 1;\ndelete a;', /După delete se scrie un pointer/, 'compile'],
+    ['int *p = new int[5];', /Vectorii/, 'compile'],
+    ['int x = new int;', /se pun numere, nu adrese/, 'compile'],
+    ['long long *p = new int(3);', /poate primi doar adresa unei cutii long long/, 'compile'],
+    ['int *p = new void;', /După new scrie felul cutiei/, 'compile'],
+    ['int *p = new int*;', /pointer la pointer/, 'compile'],
+    ['int new = 3;', /cuvânt rezervat/, 'compile'],
+  ] as const) {
+    const e = err(H + body + F);
+    assert.equal(e.kind, kind, body); assert.match(e.message, re, body);
+  }
+});
+t('heap: explain, machine view and memory sentences', () => {
+  assert.match(explain('int *p = new int(5);')[0], /adresa unei cutii noi din heap, în care se pune 5/);
+  assert.match(explain('int *p = new int(5);')[1], /^new ia o cutie nouă din heap/);
+  assert.match(explain('delete p;')[0], /^Eliberează cutia din heap spre care arată p/);
+  assert.match(explain('p = new int;')[0], /^p primește adresa unei cutii noi din heap, încă goală/);
+  const m = masina(MASINI.find(x => /heap/.test(x.name))!.code, '');
+  assert.equal(m.err, undefined);
+  const nw = m.cadre.find(c => c.fel === 'decl' && /^new/.test(c.say))!;
+  assert.match(nw.say, /„heap 1”, la adresa 0x8000/);
+  assert.ok(nw.mem.some(c => c.heap && c.adr === '0x8000'));
+  assert.match(m.cadre.find(c => c.fel === 'free' && /^delete/.test(c.say))!.say, /delete eliberează cutia „heap 1” din heap, de la adresa 0x8000/);
+  const leak = masina(H + 'int *p = new int(1);' + F, '');
+  assert.match(leak.cadre.filter(c => c.fel === 'free').at(-1)!.say, /În heap au rămas cutii fără delete \(heap 1\)/);
+  const r = compile(H + 'int *p = new int(4);\ndelete p;\nint *q = new int(5);' + F).run(''), st = [...r.trace, r.end];
+  const said = st.map((s, k) => spune(schimbare(st[k - 1], s), s)).filter(Boolean);
+  assert.ok(said.includes('Se ia o cutie nouă de pe stivă pentru p. new ia o cutie nouă din heap, „heap 1”, la adresa 0x8000. Ea rămâne acolo până la delete, chiar și după „}”.'), said.join('\n'));
+  assert.ok(said.includes('delete eliberează cutia „heap 1” din heap (adresa 0x8000): locul ei poate fi dat de următorul new.'));
+  assert.match(said.at(-1)!, /În heap a rămas cutia „heap 2” fără delete: programul a uitat s-o elibereze\.$/);
+});
+t('lectii: every program does what its page says', () => {
+  assert.deepEqual(LECTII.map(l => l.id), ['stiva', 'heap', 'impreuna']);
+  for (const l of LECTII) for (const q of l.programe) {
+    const what = l.id + ': ' + q.name, a = q.asteapta;
+    let r: ReturnType<ReturnType<typeof compile>['run']> | undefined, e: CppError | undefined;
+    try { r = compile(q.code).run(q.inp) } catch (x) { if (!(x instanceof CppError)) throw x; e = x }
+    if ('eroare' in a) { assert.ok(e && e.kind === 'run', what); assert.match(e!.message, new RegExp(a.eroare), what); continue }
+    assert.ok(r, what + ': ' + e?.message);
+    if ('ok' in a) { assert.equal(r!.out, a.ok, what); assert.deepEqual(r!.end.heap, [], what + ': nothing left on the heap') }
+    else { assert.equal(r!.out, a.out, what); assert.deepEqual(r!.end.heap.map(h => h[0]), a.heap, what) }
+    assert.ok(!r!.cut, what + ': short enough to replay');
+    // Every page shows boxes both coming and going.
+    const st = [...r!.trace, r!.end];
+    assert.ok(st.some((s, k) => k > 0 && spune(schimbare(st[k - 1], s), s)), what);
+  }
+  // What the notes promise: c takes b's address; heap 3 gets heap 1's place.
+  const c = compile(LECTII[0].programe[0].code).run('');
+  const adrOf = (name: string) => c.trace.find(s => s.vars.some(v => v[0] === name))!.vars.find(v => v[0] === name)![5];
+  assert.equal(adrOf('b'), adrOf('c'));
+  const h = compile(LECTII[1].programe[0].code).run('');
+  assert.ok(h.trace.some(s => s.heap.some(x => x[0] === 'heap 3' && x[2] === '0x8000')));
+  assert.equal(html('`int *p` și **heap** <b>'), '<code>int *p</code> și <b>heap</b> &lt;b&gt;');
 });
 console.log(n + ' tests passed');

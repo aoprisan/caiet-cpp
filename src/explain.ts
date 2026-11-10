@@ -51,9 +51,11 @@ function paren(s: string): [string, string] {
   }
   return [s.slice(1), ''];
 }
-/** What a pointer gets: `&a` or `nullptr`. */
+/** What a pointer gets: `&a`, `nullptr` or a new box on the heap (`new int(5)`). */
 function ptrInit(v: string): string {
   if (v === 'nullptr') return 'pornește cu nullptr: nu arată spre nicio cutie';
+  const n = /^new\s+(?:int|long\s+long)\s*(?:\((.*)\))?$/.exec(v);
+  if (n) return 'pornește cu adresa unei cutii noi din heap' + (n[1] === undefined ? ', încă goală' : n[1].trim() ? ', în care se pune ' + n[1].trim() : ', în care se pune 0') + ': arată spre ea';
   const a = /^&\s*(\w+)$/.exec(v);
   return a ? 'pornește cu adresa lui ' + a[1] + ': arată spre cutia ' + a[1] : 'pornește cu ' + v;
 }
@@ -127,7 +129,8 @@ function simple(st: string): string {
     };
     return says[m[2]];
   }
-  if ((m = /^(\w+)\s*=\s*(&\s*\w+|nullptr)$/.exec(st))) return m[1] + ' ' + ptrInit(m[2]).replace('pornește cu', 'primește') + '.';
+  if ((m = /^delete\s+(\w+)$/.exec(st))) return 'Eliberează cutia din heap spre care arată ' + m[1] + ': ea nu mai poate fi folosită, iar locul ei poate fi dat altei cutii. ' + m[1] + ' ține minte adresa, dar nu mai are voie să o folosească (cu *' + m[1] + ').';
+  if ((m = /^(\w+)\s*=\s*(&\s*\w+|nullptr|new\b.*)$/.exec(st))) return m[1] + ' ' + ptrInit(m[2]).replace('pornește cu', 'primește') + '.';
   if ((m = /^\*\s*(\w+)\s*=(?!=)\s*(.+)$/.exec(st))) return 'Calculează ' + m[2] + ' și pune rezultatul în cutia spre care arată ' + m[1] + ' (nu în ' + m[1] + ').';
   if ((m = /^(\w+)\s*\((.*)\)$/.exec(st)) && !NOCALL.has(m[1]))
     return 'Apelează funcția ' + m[1] + (m[2].trim() ? ' cu ' + m[2].trim() : '') + ': programul sare la instrucțiunile ei, iar când ea se termină, revine aici.';
@@ -171,6 +174,7 @@ export function explain(raw: string): string[] {
   const head = HEAD.test(code.trim().replace(/[{;]\s*$/, '').trim()), call = [...bare.matchAll(/\b([A-Za-z_]\w*)\s*\(/g)].map(m => m[1]).find(n => !NOCALL.has(n));
   if (call && !head && !/^\w+\s*\(.*\)\s*;?$/.test(code.trim()))
     list.push(call + '(...) este un apel de funcție: funcția ' + call + ' se execută, iar valoarea întoarsă de ea se folosește aici.');
+  if (/\bnew\b/.test(bare)) list.push('new ia o cutie nouă din heap, o parte a memoriei unde cutiile nu dispar la „}”, și dă adresa ei. Cutia nu are nume: o găsim prin pointer. Rămâne în heap până la delete.');
   if (/\(\s*long\s+long\s*\)|\d(?:LL|ll)\b/.test(bare)) list.push('(long long) în fața unui calcul, sau 1LL, face calculul cu numere mari, ca rezultatul să nu iasă din int.');
   if (bare.includes('%')) list.push('Semnul % dă restul împărțirii: 17 % 5 este 2.');
   if (bare.includes('/')) list.push('Semnul / dă câtul împărțirii întregi, fără rest: 17 / 5 este 3.');

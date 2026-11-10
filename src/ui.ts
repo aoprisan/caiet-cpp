@@ -1,9 +1,11 @@
 // Page wiring: section menu, intro (processor and memory), editor, highlighting, run, step-through stack view,
 // machine view (CPU, memory, buses), examples, pbinfo problems (with the statement beside the editor while solving one).
-import { compile, CppError, type RunResult, type Snapshot, type Val } from './interp.js';
+import { compile, CppError, type HeapView, type RunResult, type Snapshot, type Val, type VarView } from './interp.js';
 import { explain } from './explain.js';
 import { DEMOS, INTREBARI, memorie } from './intro.js';
 import { MASINI, masina, type Cadru, type Masina } from './masina.js';
+import { schimbare, spune, type Schimbare } from './stiva.js';
+import { LECTII, html } from './lectii.js';
 import { CAPITOLE, DIFICULTATI, blocuri, matches, note, pentruPbinfo, url, verifica, type Culegere, type Problema, type Rezultat } from './probleme.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -26,6 +28,9 @@ const EX: { name: string; inp: string; code: string }[] = [
   { name: 'Cel mai mare divizor comun', inp: '84 36', code: H + '    int a, b, r;\n    cin >> a >> b;\n    while (b != 0) {\n        r = a % b;\n        a = b;\n        b = r;\n    }\n    cout << "cmmdc = " << a << endl;\n' + F },
   { name: 'O funcție: este prim?', inp: '97', code: '#include <iostream>\nusing namespace std;\n\nint prim(int n) {\n    if (n < 2) {\n        return 0;\n    }\n    for (int d = 2; d * d <= n; d++) {\n        if (n % d == 0) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main() {\n    int n;\n    cin >> n;\n    if (prim(n)) {\n        cout << n << " este prim" << endl;\n    } else {\n        cout << n << " nu este prim" << endl;\n    }\n' + F },
   { name: 'Factorial cu long long', inp: '20', code: '#include <iostream>\nusing namespace std;\n\nlong long factorial(int n) {\n    if (n <= 1) {\n        return 1;\n    }\n    return n * factorial(n - 1);   // funcția se apelează pe ea însăși\n}\n\nint main() {\n    int n;\n    cin >> n;\n    cout << n << "! = " << factorial(n) << endl;\n' + F },
+  { name: 'Stiva și heap-ul', inp: '5', code: H + '    int n;\n    cin >> n;\n    int *p = new int(0);   // o cutie din heap, cu 0 în ea\n    for (int i = 1; i <= n; i++) {\n        int patrat = i * i;   // pleacă de pe stivă la }\n        *p = *p + patrat;\n    }\n    cout << "Suma pătratelor: " << *p << endl;\n    cout << "Cutia din heap e la adresa " << p << endl;\n    delete p;   // eliberăm cutia din heap\n' + F },
+  // The programs of the memory lessons, so „Schimbă-l în caiet” can open them like any example.
+  ...LECTII.flatMap(l => l.programe.map(q => ({ name: l.titlu + ': ' + q.name, inp: q.inp, code: q.code }))),
   { name: 'Tabla înmulțirii', inp: '7', code: H + '    int n;\n    cin >> n;\n    for (int i = 1; i <= 10; i++) {\n        cout << n << " x " << i << " = " << n * i << endl;\n    }\n' + F },
 ];
 const store = {
@@ -40,7 +45,7 @@ const keys = $('keys'), follow = $('follow'), sCode = $('sCode');
 const hl = $('hl'), band = $('band'), layer = $('layer'), range = $<HTMLInputElement>('sRange'), sLabel = $('sLabel'), stackEl = $('stack');
 let badLine = 0, curLine = 0, lines = 0, steps: Snapshot[] = [], cur = 0, fullOut = '', lastErr: CppError | null = null, cut = false;
 
-const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|long|void|if|else|while|for|do|return|break|continue|using|namespace|nullptr)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
+const RE = /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|(?![\s\S])))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(^[ \t]*#[^\n]*)|(\b\d+\b)|(\b(?:int|long|void|if|else|while|for|do|return|break|continue|using|namespace|nullptr|new|delete)\b)|(\b(?:cin|cout|endl|std|main)\b)/gm;
 const CLS = ['com', 'str', 'pre', 'num', 'kw', 'io'];
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function paint(src: string): string {
@@ -84,22 +89,79 @@ code.addEventListener('click', drawExplain);
 document.addEventListener('selectionchange', () => { if (document.activeElement === code && !curLine) drawExplain() });
 
 /** A variable cell: name, value, is it global, index in the snapshot (to diff against the previous step), what a pointer points to,
- * the function call it belongs to. */
-type Cell = [name: string, value: Val | undefined, global: boolean, idx: number, to: string | undefined, call: number | undefined];
-function frame(title: string, vars: Cell[], prev: Snapshot | undefined, from: boolean): HTMLElement {
+ * the function call it belongs to, its address. */
+type Cell = [name: string, value: Val | undefined, global: boolean, idx: number, to: string | undefined, call: number | undefined, adr: string | undefined];
+/** One frame of the stack. With the memory animations on (`d`), the boxes taken at this step slide in on top and the
+ * boxes freed (`gone`, drawn above the others since they were on top) fade away. */
+function frame(title: string, vars: Cell[], prev: Snapshot | undefined, from: boolean, d?: Schimbare, gone: VarView[] = []): HTMLElement {
   const f = document.createElement('div'); f.className = 'frame';
   const h = document.createElement('h3'); h.textContent = title; f.append(h);
-  if (!vars.length) { const p = document.createElement('p'); p.className = 'none'; p.textContent = 'Nicio variabilă încă.'; f.append(p) }
-  for (let i = vars.length - 1; i >= 0; i--) {
-    const [name, val, , idx, to] = vars[i], c = document.createElement('div'); c.className = 'cell';
+  if (!vars.length && !gone.length) { const p = document.createElement('p'); p.className = 'none'; p.textContent = 'Nicio variabilă încă.'; f.append(p) }
+  const box = (name: string, val: Val | undefined, to: string | undefined, adr: string | undefined) => {
+    const c = document.createElement('div'); c.className = 'cell';
     const b = document.createElement('b'); b.textContent = name;
     const v = document.createElement('span'); v.textContent = to ? (to === 'nullptr' ? to : '→ ' + to) : val === undefined ? '?' : String(val);
     if (val === undefined) v.className = 'q';
+    c.append(b);
+    if (adr) c.append(el('small', 'adr', adr));
+    c.append(v); return c;
+  };
+  for (let i = gone.length - 1; i >= 0; i--) {
+    const [name, val, , to, , adr] = gone[i], c = box(name, val, to, adr);
+    c.classList.add('plec'); c.lastElementChild!.before(el('small', 'tag', 'eliberată'));
+    c.addEventListener('animationend', () => c.remove());
+    f.append(c);
+  }
+  for (let i = vars.length - 1; i >= 0; i--) {
+    const [name, val, , idx, to, , adr] = vars[i], c = box(name, val, to, adr);
     const o = prev && prev.vars[idx];
-    if (from && (!o || o[0] !== name || o[1] !== val)) c.classList.add('chg');
-    c.append(b, v); f.append(c);
+    if (d && idx >= d.kept) { c.classList.add('nou'); c.lastElementChild!.before(el('small', 'tag', 'nouă')) }
+    else if (from && (!o || o[0] !== name || o[1] !== val)) c.classList.add('chg');
+    f.append(c);
   }
   return f;
+}
+/** Draws the memory at step `s` into `into`: the stack (one frame per function call, the one running now on top) and the
+ * heap, side by side. With `d` (what changed since `prev`), the boxes taken slide in and the freed ones fade away;
+ * `from` marks the values changed since `prev`. Used by the caiet and the memory lessons. */
+function drawMem(into: HTMLElement, s: Snapshot, prev: Snapshot | undefined, d: Schimbare | undefined, from: boolean) {
+  const stCol = el('div', 'mcol'), hpCol = el('div', 'mcol hp');
+  stCol.append(el('h4', '', 'Stiva'));
+  hpCol.append(el('h4', '', 'Heap'), el('small', 'mnote', 'cutiile luate cu new, până la delete'));
+  const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k, v[3], v[4], v[5]]);
+  const inCall = (v: VarView) => !v[2] && (v[4] ?? 0) >= (d?.same ?? 0);
+  // Function calls that just ended: their frame, all boxes freed, fades away above the others.
+  if (d) for (let k = (prev!.calls.length || 1) - 1; k >= d.same; k--) {
+    const f = frame((prev!.calls[k] || 'main') + '()', [], prev, false, d, d.freed.filter(v => inCall(v) && (v[4] ?? 0) === k));
+    f.classList.add('plec'); f.addEventListener('animationend', e => { if (e.target === f) f.remove() });
+    stCol.append(f);
+  }
+  const calls = s.calls.length ? s.calls : ['main'];
+  for (let k = calls.length - 1; k >= 0; k--) {
+    const f = frame(calls[k] + '()', all.filter(v => !v[2] && (v[5] ?? 0) === k), prev, from, d, d?.freed.filter(v => !inCall(v) && !v[2] && (v[4] ?? 0) === k));
+    if (d?.started.includes(k)) f.classList.add('nou');
+    stCol.append(f);
+  }
+  const g = all.filter(v => v[2]), gg = d?.freed.filter(v => v[2]) ?? [];
+  if (g.length || gg.length) stCol.append(frame('variabile globale', g, prev, from, d, gg));
+  // The heap: boxes without a name, reached only through a pointer; they stay until delete, whatever `}` comes.
+  const hp = el('div', 'frame heap'), fresh = new Set(d?.heapTaken.map(h => h[0]));
+  const hbox = ([name, val, adr]: HeapView, cls: string, tag?: string) => {
+    const c = el('div', ('cell ' + cls).trim()), v = el('span', val === undefined ? 'q' : '', val === undefined ? '?' : String(val));
+    c.append(el('b', '', name), el('small', 'adr', adr));
+    if (tag) c.append(el('small', 'tag', tag));
+    c.append(v); return c;
+  };
+  for (const h of d?.heapFreed ?? []) {
+    const c = hbox(h, 'plec', 'eliberată'); c.addEventListener('animationend', () => c.remove()); hp.append(c);
+  }
+  for (const h of s.heap) {
+    const o = prev?.heap.find(x => x[0] === h[0]);
+    hp.append(hbox(h, fresh.has(h[0]) ? 'nou' : from && (!o || o[1] !== h[1]) ? 'chg' : '', fresh.has(h[0]) ? 'nouă' : undefined));
+  }
+  if (!hp.children.length) hp.append(el('p', 'none', 'Nicio cutie în heap.'));
+  hpCol.append(hp);
+  into.append(stCol, hpCol);
 }
 function showStep(i: number) {
   const n = steps.length; cur = Math.max(0, Math.min(i, n - 1));
@@ -112,18 +174,18 @@ function showStep(i: number) {
   $<HTMLButtonElement>('sFirst').disabled = $<HTMLButtonElement>('sPrev').disabled = cur <= 0;
   $<HTMLButtonElement>('sNext').disabled = $<HTMLButtonElement>('sLast').disabled = last;
   sLabel.textContent = (!s ? 'Repară greșeala și rulează din nou ca să vezi variabilele.'
-    : last ? (lastErr ? 'Oprit la linia ' + lastErr.line + '.' : 'Program terminat.') + ' Apasă |◀ ca să îl urmărești pas cu pas.'
+    : last ? (lastErr ? 'Oprit la linia ' + lastErr.line + '.' : 'Program terminat.')
+      + (!lastErr && s.heap.length ? ' Atenție: în heap au rămas cutii fără delete.' : '') + ' Apasă |◀ ca să îl urmărești pas cu pas.'
       : 'Pasul ' + (cur + 1) + ' din ' + (n - 1) + ': urmează linia ' + s.line + '.')
     + (cut ? ' Programul are mulți pași, se pot urmări doar primii 2000.' : '');
+  const on = animOn(), d = on && s && prev ? schimbare(prev, s) : undefined, say = d && s ? spune(d, s) : '';
+  sMem.hidden = !on || !s;
+  sMem.textContent = say || (!s ? '' : cur === 0 ? 'Memoria e goală. Apasă ▶ sau ⏵ Redă ca să vezi cum se iau cutiile.' : 'Nicio cutie nu vine și nu pleacă la pasul acesta.');
+  sMem.classList.toggle('now', !!say);
   stackEl.innerHTML = '';
-  if (s) {
-    const all: Cell[] = s.vars.map((v, k) => [v[0], v[1], v[2], k, v[3], v[4]]);
-    // One frame per function call, the one running now on top, main at the bottom.
-    const calls = s.calls.length ? s.calls : ['main'];
-    for (let k = calls.length - 1; k >= 0; k--) stackEl.append(frame(calls[k] + '()', all.filter(v => !v[2] && (v[5] ?? 0) === k), prev, cur > 0));
-    const g = all.filter(v => v[2]);
-    if (g.length) stackEl.append(frame('variabile globale', g, prev, cur > 0));
-  }
+  if (s) drawMem(stackEl, s, prev, d, cur > 0);
+  $<HTMLButtonElement>('sPlay').hidden = !on;
+  if (last) stopPlay();
   sCode.hidden = !curLine;
   sCode.innerHTML = curLine ? '<span class="ln">' + curLine + '</span>' + paint(code.value.split('\n')[curLine - 1].trim()) : '';
   follow.hidden = n < 2;
@@ -145,7 +207,30 @@ function saveMine() {
   drawBar();
 }
 
+/** The memory animations (the option in the problem bar, caiet.anim): only while a problem is in the editor. */
+const sMem = $('sMem'), sPlay = $<HTMLButtonElement>('sPlay'), pAnim = $<HTMLInputElement>('pAnim');
+const animOn = () => isProb(ex.value) && store.get('caiet.anim') === 'da';
+let playing = 0;
+/** Plays the steps one after another, from the start if the stepper is at the end. */
+function play() {
+  stopPlay();
+  if (cur >= steps.length - 1) showStep(0);
+  if (steps.length < 2) return;
+  playing = window.setInterval(() => showStep(cur + 1), 1100);
+  sPlay.textContent = '⏸ Pauză'; sPlay.setAttribute('aria-pressed', 'true');
+}
+function stopPlay() {
+  if (playing) clearInterval(playing);
+  playing = 0; sPlay.textContent = '⏵ Redă'; sPlay.setAttribute('aria-pressed', 'false');
+}
+sPlay.addEventListener('click', () => playing ? stopPlay() : play());
+pAnim.addEventListener('change', () => {
+  store.set('caiet.anim', pAnim.checked ? 'da' : '');
+  stopPlay(); showStep(cur);
+});
+
 function run() {
+  stopPlay();
   let r: Pick<RunResult, 'out' | 'trace' | 'cut'> & { end?: Snapshot }, err: CppError | null = null;
   try { r = compile(code.value).run(inp.value) }
   catch (e) {
@@ -165,11 +250,11 @@ function run() {
   showStep(steps.length - 1);
   if (mSrc === CAIET) mLoad(CAIET);
 }
-$('sFirst').addEventListener('click', () => showStep(0));
-$('sPrev').addEventListener('click', () => showStep(cur - 1));
-$('sNext').addEventListener('click', () => showStep(cur + 1));
-$('sLast').addEventListener('click', () => showStep(steps.length - 1));
-range.addEventListener('input', () => showStep(+range.value));
+$('sFirst').addEventListener('click', () => { stopPlay(); showStep(0) });
+$('sPrev').addEventListener('click', () => { stopPlay(); showStep(cur - 1) });
+$('sNext').addEventListener('click', () => { stopPlay(); showStep(cur + 1) });
+$('sLast').addEventListener('click', () => { stopPlay(); showStep(steps.length - 1) });
+range.addEventListener('input', () => { stopPlay(); showStep(+range.value) });
 
 /** Puts the caret at the start of a line and scrolls it into view (from the error message). */
 function goLine(line: number) {
@@ -215,12 +300,17 @@ code.addEventListener('input', () => { badLine = 0; curLine = 0; drawGutter(); s
 inp.addEventListener('input', () => { if (ex.value === 'mine' || isProb(ex.value)) saveMine() });
 code.addEventListener('scroll', sync);
 ex.addEventListener('change', () => { load(ex.value); run() });
-$('run').addEventListener('click', () => { run(); if (MOBILE.matches) tab('rulare') });
+$('run').addEventListener('click', () => {
+  run();
+  // With the memory animations on, Run also plays the steps from the start so the boxes come and go.
+  if (animOn() && steps.length > 1) { play(); if (MOBILE.matches) tab('pasi') }
+  else if (MOBILE.matches) tab('rulare');
+});
 
 // ---- Sections (the menu) and, on a phone, the parts of the caiet (bottom tabs). Keep MOBILE in sync with the media query in css/style.css.
 const MOBILE = matchMedia('(max-width:760px), (pointer:coarse) and (max-height:500px)');
-type Sec = 'start' | 'caiet' | 'probleme' | 'masina' | 'ajutor';
-const SECS: Sec[] = ['start', 'caiet', 'probleme', 'masina', 'ajutor'];
+type Sec = 'start' | 'caiet' | 'probleme' | 'memorie' | 'masina' | 'ajutor';
+const SECS: Sec[] = ['start', 'caiet', 'probleme', 'memorie', 'masina', 'ajutor'];
 const secs = [...document.querySelectorAll<HTMLElement>('[data-sec]')], links = [...document.querySelectorAll<HTMLAnchorElement>('#menu a')];
 const panes = [...document.querySelectorAll<HTMLElement>('[data-pane]')], tabs = [...document.querySelectorAll<HTMLButtonElement>('#tabs button')];
 const menuBtn = $('menuBtn');
@@ -234,13 +324,21 @@ function sec(name: Sec) {
     links.forEach(a => { if (a.dataset.go === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current') });
     document.body.dataset.at = name;
     if (name !== 'masina') mStop();
+    if (name !== 'memorie') lStop();
     if (name !== 'start') store.set('caiet.sec', name);
     if (!MOBILE.matches) window.scrollTo(0, 0);
     if (name === 'caiet') paneTabs();
   }
-  if (location.hash.slice(1) !== name) history[booted ? 'pushState' : 'replaceState'](null, '', '#' + name);
+  // The memory lessons have an address per page (#stiva, #heap, #impreuna).
+  const h = name === 'memorie' ? LECTII[lec].id : name;
+  if (location.hash.slice(1) !== h) history[booted ? 'pushState' : 'replaceState'](null, '', '#' + h);
 }
-const fromHash = () => { const h = location.hash.slice(1) as Sec; if (SECS.includes(h)) sec(h) };
+const lecOf = (h: string) => LECTII.findIndex(l => l.id === h);
+const fromHash = () => {
+  const h = location.hash.slice(1), k = lecOf(h);
+  if (k >= 0) { if (k !== lec || secNow !== 'memorie') lectie(k) }
+  else if (SECS.includes(h as Sec)) sec(h as Sec);
+};
 addEventListener('hashchange', fromHash);
 addEventListener('popstate', fromHash);
 /** The menu is a drop-down on a phone (☰), a bar on a computer. */
@@ -414,8 +512,14 @@ function mShow(i: number) {
   const at = mProg.children[c.line - 1] as HTMLElement | undefined;
   if (at && (at.offsetTop < mProg.scrollTop || at.offsetTop + at.offsetHeight > mProg.scrollTop + mProg.clientHeight)) mProg.scrollTop = at.offsetTop - mProg.clientHeight / 2;
   mData.innerHTML = '';
-  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)].sort((a, b) => a[0].at - b[0].at);
-  for (const [m, f] of all) mData.append(cell(c, m, f));
+  // The stack first, then the heap (boxes taken with new), each by address.
+  const all = [...c.mem.map(m => [m, false] as const), ...c.freed.map(m => [m, true] as const)]
+    .sort((a, b) => (a[0].heap ? 1e6 : 0) + a[0].at - (b[0].heap ? 1e6 : 0) - b[0].at);
+  let hp = false;
+  for (const [m, f] of all) {
+    if (m.heap && !hp) { hp = true; mData.append(el('p', 'mheap', 'Heap: cutiile luate cu new')) }
+    mData.append(cell(c, m, f));
+  }
   if (!all.length) mData.append(el('p', 'none', 'Nicio cutie folosită încă.'));
   // Keyboard and screen
   mKeys.innerHTML = '';
@@ -513,6 +617,110 @@ INTREBARI.forEach((q, k) => {
 });
 $('iGo').addEventListener('click', () => { store.set('caiet.intro', 'citit'); if (MOBILE.matches) tab('cod'); else sec('caiet') });
 showDemo(0);
+
+// ---- Lessons on memory (src/lectii.ts): the stack, the heap, both. Each program runs here and replays step by step,
+// with the stack and the heap drawn by drawMem() and a sentence for what came and went.
+let lec = Math.max(0, lecOf(store.get('caiet.lectie') || '')), lProg = 0, lCur = 0, lTimer = 0;
+let lSteps: Snapshot[] = [], lOutAll = '', lErr: CppError | null = null;
+const lText = $('lText'), lProgEl = $('lProg'), lCode = $('lCode'), lMem = $('lMem'), lSay = $('lSay'), lOut = $('lOut'), lStatus = $('lStatus');
+const lRange = $<HTMLInputElement>('lRange'), lLabel = $('lLabel'), lPlay = $<HTMLButtonElement>('lPlay');
+const lPicks = LECTII.map((l, k) => {
+  const b = el('button', '', (k + 1) + '. ' + l.titlu); b.type = 'button';
+  b.addEventListener('click', () => lectie(k)); $('lPick').append(b); return b;
+});
+/** Opens lesson page `k` (and its program `j`); `go` also brings the section into view. */
+function lectie(k: number, j = 0, go = true) {
+  lec = k; store.set('caiet.lectie', LECTII[k].id);
+  const L = LECTII[k];
+  lPicks.forEach((b, i) => { if (i === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current') });
+  $('lTitlu').textContent = (k + 1) + '. ' + L.titlu;
+  lText.innerHTML = L.text.map(t => '<p>' + html(t) + '</p>').join('');
+  if (L.tabel) {
+    const [head, ...rows] = L.tabel;
+    lText.insertAdjacentHTML('beforeend', '<table class="ltable"><thead><tr>' + head.map(c => '<th>' + html(c) + '</th>').join('') + '</tr></thead><tbody>'
+      + rows.map(r => '<tr>' + r.map((c, i) => (i ? '<td>' : '<th>') + html(c) + (i ? '</td>' : '</th>')).join('') + '</tr>').join('') + '</tbody></table>');
+  }
+  lProgEl.innerHTML = '';
+  L.programe.forEach((q, i) => {
+    const b = el('button', 'pbtn', q.name); b.type = 'button';
+    b.addEventListener('click', () => lProgram(i)); lProgEl.append(b);
+  });
+  const back = $<HTMLButtonElement>('lBack'), fwd = $<HTMLButtonElement>('lFwd');
+  back.hidden = k === 0; back.textContent = k > 0 ? '← ' + LECTII[k - 1].titlu : '';
+  fwd.hidden = k === LECTII.length - 1; fwd.textContent = k < LECTII.length - 1 ? LECTII[k + 1].titlu + ' →' : '';
+  lProgram(j);
+  if (go) sec('memorie');
+}
+/** Runs program `j` of the current lesson and shows its first step (memory still empty). */
+function lProgram(j: number) {
+  lStop(); lProg = j;
+  const q = LECTII[lec].programe[j];
+  [...lProgEl.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i === j)));
+  $('lNota').textContent = q.nota;
+  $('lInL').hidden = !q.inp; $('lIn').textContent = q.inp;
+  lErr = null;
+  try { const r = compile(q.code).run(q.inp); lSteps = [...r.trace, r.end]; lOutAll = r.out }
+  catch (e) {
+    if (!(e instanceof CppError)) throw e;
+    lErr = e; lSteps = [...e.trace || [], ...e.end ? [e.end] : []]; lOutAll = e.out || '';
+  }
+  lShow(0);
+}
+function lShow(i: number) {
+  const n = lSteps.length; lCur = Math.max(0, Math.min(i, n - 1));
+  const s = lSteps[lCur] as Snapshot | undefined, prev = lSteps[lCur - 1] as Snapshot | undefined, last = lCur >= n - 1;
+  const q = LECTII[lec].programe[lProg], line = s && !last ? s.line : 0, bad = last && lErr ? lErr.line : 0;
+  lCode.innerHTML = q.code.replace(/\n$/, '').split('\n').map((l, k) => '<div' + (k + 1 === line ? ' class="cur"' : k + 1 === bad ? ' class="bad"' : '') + '><span class="ln">' + (k + 1) + '</span>' + paint(l) + '</div>').join('');
+  const lLine = $('lLine'), shown = line || bad; // on a phone the code is far above: the line again, beside the memory
+  lLine.hidden = !shown;
+  lLine.innerHTML = shown ? '<span class="ln">' + shown + '</span>' + paint(q.code.split('\n')[shown - 1].trim()) : '';
+  const mark = lCode.querySelector<HTMLElement>('.cur, .bad'), box = lCode.parentElement!;
+  if (mark && (mark.offsetTop < box.scrollTop || mark.offsetTop + mark.offsetHeight > box.scrollTop + box.clientHeight)) box.scrollTop = mark.offsetTop - box.clientHeight / 2;
+  const text = !s ? '' : last ? lOutAll : lOutAll.slice(0, s.out);
+  lOut.textContent = text || (last && !lErr ? 'Programul nu a afișat nimic.' : '');
+  lOut.classList.toggle('empty', !text);
+  lStatus.hidden = !last;
+  lStatus.className = lErr ? 'err' : 'ok';
+  lStatus.textContent = !last ? '' : lErr ? 'Eroare la rulare, linia ' + lErr.line + ': ' + lErr.message
+    : 'Program terminat cu succes.' + (s?.heap.length ? ' Dar în heap au rămas cutii fără delete.' : '');
+  const d = s && prev ? schimbare(prev, s) : undefined, say = d && s ? spune(d, s) : '';
+  lSay.textContent = lCur === 0 ? 'Memoria e goală. Apasă ▶ (un pas) sau ⏵ Redă pas cu pas și urmărește cum se iau cutiile.'
+    : last && lErr ? (say ? say + ' ' : '') + 'Aici programul se oprește, la linia ' + lErr.line + '.'
+      : say || 'Nicio cutie nu vine și nu pleacă la pasul acesta.';
+  lSay.classList.toggle('now', !!say || (last && !!lErr));
+  lLabel.textContent = last ? (lErr ? 'Oprit la linia ' + lErr.line + '.' : 'Program terminat.') + ' Apasă |◀ ca să îl urmărești de la început.'
+    : 'Pasul ' + (lCur + 1) + ' din ' + (n - 1) + ': urmează linia ' + line + '.';
+  lMem.innerHTML = '';
+  if (s) drawMem(lMem, s, prev, d, lCur > 0);
+  lRange.max = String(Math.max(0, n - 1)); lRange.value = String(lCur);
+  $<HTMLButtonElement>('lFirst').disabled = $<HTMLButtonElement>('lPrev').disabled = lCur <= 0;
+  $<HTMLButtonElement>('lNext').disabled = $<HTMLButtonElement>('lLast').disabled = last;
+  if (last) lStop();
+}
+function lStop() {
+  if (lTimer) clearInterval(lTimer);
+  lTimer = 0; lPlay.textContent = '⏵ Redă pas cu pas'; lPlay.setAttribute('aria-pressed', 'false');
+}
+lPlay.addEventListener('click', () => {
+  if (lTimer) { lStop(); return }
+  if (lCur >= lSteps.length - 1) lShow(0);
+  lPlay.textContent = '⏸ Pauză'; lPlay.setAttribute('aria-pressed', 'true');
+  lTimer = window.setInterval(() => lShow(lCur + 1), 1300);
+});
+$('lRun').addEventListener('click', () => { lStop(); lShow(lSteps.length - 1) });
+$('lFirst').addEventListener('click', () => { lStop(); lShow(0) });
+$('lPrev').addEventListener('click', () => { lStop(); lShow(lCur - 1) });
+$('lNext').addEventListener('click', () => { lStop(); lShow(lCur + 1) });
+$('lLast').addEventListener('click', () => { lStop(); lShow(lSteps.length - 1) });
+lRange.addEventListener('input', () => { lStop(); lShow(+lRange.value) });
+$('lBack').addEventListener('click', () => lectie(lec - 1));
+$('lFwd').addEventListener('click', () => lectie(lec + 1));
+$('lOpen').addEventListener('click', () => {
+  const q = LECTII[lec].programe[lProg], k = EX.findIndex(e => e.code === q.code);
+  ex.value = String(k); load(ex.value); run(); showStep(0);
+  if (MOBILE.matches) tab('cod'); else sec('caiet');
+});
+lectie(lec, 0, false);
 
 // ---- Problems from pbinfo (probleme/probleme.json, built by tools/probleme.mjs): list, statement, check on the examples.
 let probs: Problema[] = [], sel: Problema | undefined;
@@ -630,6 +838,7 @@ function drawBar() {
   if (!on) return;
   $('pName').textContent = p ? p.nume : (ex.selectedOptions[0]?.text || '').replace('Problema: ', '');
   $<HTMLButtonElement>('pCheck').disabled = $<HTMLButtonElement>('pSend').disabled = !p;
+  pAnim.checked = store.get('caiet.anim') === 'da';
 }
 /** While a problem is in the editor its statement stays at hand: a column beside the code on a computer
  * (it can be hidden with „Enunțul”, remembered in caiet.enunt), the „Enunț” tab on a phone. */
@@ -722,7 +931,8 @@ ex.value = isProb(doc) && docName ? doc : store.get('caiet.code') ? 'mine' : '0'
 load(ex.value); run();
 { // First section: the address (#probleme), else the last one used, else the intro until it was read.
   const h = location.hash.slice(1) as Sec, last = store.get('caiet.sec') as Sec | null;
-  const first: Sec = SECS.includes(h) ? h : last && SECS.includes(last) ? last : store.get('caiet.intro') ? 'caiet' : 'start';
+  if (lecOf(h) >= 0 && lecOf(h) !== lec) lectie(lecOf(h), 0, false);
+  const first: Sec = lecOf(h) >= 0 ? 'memorie' : SECS.includes(h) ? h : last && SECS.includes(last) ? last : store.get('caiet.intro') ? 'caiet' : 'start';
   if (first === 'caiet') tab('cod'); else { panes.forEach(p => p.classList.toggle('on', p.dataset.pane === 'cod')); sec(first) }
   booted = true;
 }
