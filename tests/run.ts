@@ -396,7 +396,7 @@ t('heap: explain, machine view and memory sentences', () => {
   assert.match(said.at(-1)!, /În heap a rămas cutia „heap 2” fără delete: programul a uitat s-o elibereze\.$/);
 });
 t('lectii: every program does what its page says', () => {
-  assert.deepEqual(LECTII.map(l => l.id), ['stiva', 'heap', 'impreuna']);
+  assert.deepEqual(LECTII.map(l => l.id), ['stiva', 'pointeri', 'heap', 'impreuna']);
   for (const l of LECTII) for (const q of l.programe) {
     const what = l.id + ': ' + q.name, a = q.asteapta;
     let r: ReturnType<ReturnType<typeof compile>['run']> | undefined, e: CppError | undefined;
@@ -414,8 +414,25 @@ t('lectii: every program does what its page says', () => {
   const c = compile(LECTII[0].programe[0].code).run('');
   const adrOf = (name: string) => c.trace.find(s => s.vars.some(v => v[0] === name))!.vars.find(v => v[0] === name)![5];
   assert.equal(adrOf('b'), adrOf('c'));
-  const h = compile(LECTII[1].programe[0].code).run('');
+  const h = compile(LECTII.find(l => l.id === 'heap')!.programe[0].code).run('');
   assert.ok(h.trace.some(s => s.heap.some(x => x[0] === 'heap 3' && x[2] === '0x8000')));
+  // „Verifică-te”: the right answer is what the code really does.
+  for (const l of LECTII) {
+    assert.ok(l.intrebari.length >= 2, l.id);
+    for (const q of l.intrebari) {
+      const what = l.id + ': ' + q.ask + ' ' + q.code.split('\n')[0], a = q.asteapta, right = q.options[q.ok];
+      assert.ok(right !== undefined && new Set(q.options).size === q.options.length, what);
+      const top = '#include <iostream>\nusing namespace std;\n\n';
+      const src = /int main\(\)/.test(q.code) ? top + q.code + '\n'
+        : top + 'int main() {\n' + q.code.split('\n').map(x => '    ' + x + '\n').join('') + '    return 0;\n}\n';
+      let r: ReturnType<ReturnType<typeof compile>['run']> | undefined, e: CppError | undefined;
+      try { r = compile(src).run('') } catch (x) { if (!(x instanceof CppError)) throw x; e = x }
+      if ('eroare' in a) { assert.ok(e, what); assert.match(e!.message, new RegExp(a.eroare), what); assert.match(right, /^eroare/, what); continue }
+      assert.ok(r, what + ': ' + e?.message);
+      if ('ok' in a) { assert.equal(r!.out, a.ok, what); assert.equal(right, a.ok, what); assert.deepEqual(r!.end.heap, [], what) }
+      else { assert.equal(r!.out, a.out, what); assert.deepEqual(r!.end.heap.map(h => h[0]), a.heap, what); assert.equal(right, String(a.heap.length), what) }
+    }
+  }
   assert.equal(html('`int *p` și **heap** <b>'), '<code>int *p</code> și <b>heap</b> &lt;b&gt;');
 });
 console.log(n + ' tests passed');
